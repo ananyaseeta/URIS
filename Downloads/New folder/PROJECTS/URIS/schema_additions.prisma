@@ -1,0 +1,68 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// ADD THESE MODELS TO THE BOTTOM OF YOUR EXISTING schema.prisma
+// (Person A already has: Intern, AvailabilitySlot, User, Role enum)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Task {
+  id            String    @id @default(uuid())
+  planeTaskId   String    @unique         // ID from Plane.so — used for upserts
+  internId      String
+  title         String
+  complexity    Float                     // 1 = low, 2 = medium, 3 = high
+  progressPct   Int       @default(0)     // 0 | 25 | 50 | 75 | 100
+  status        String    @default("active") // "active" | "stale" | "completed" | "blocked"
+  hasBlocker    Boolean   @default(false)
+  blockerType   String?                   // "internal" | "external" | "dependency"
+  skills        String[]                  // skill tags from Plane.so
+  deadline      DateTime?
+  lastUpdatedAt DateTime
+  createdAt     DateTime  @default(now())
+
+  intern        Intern    @relation(fields: [internId], references: [id])
+}
+
+model CredibilityScore {
+  id                  String   @id @default(uuid())
+  internId            String   @unique
+  updateFrequency     Float                       // 0–1: how consistently tasks are updated
+  deadlineAdherence   Float                       // 0–1: on-time completion rate
+  throughputAccuracy  Float                       // 0–1: actual output vs declared availability
+  score               Float                       // final weighted score 0–1
+  computedAt          DateTime @default(now())
+
+  intern              Intern   @relation(fields: [internId], references: [id])
+}
+
+model CapacityScore {
+  id             String   @id @default(uuid())
+  internId       String   @unique
+  baseCapacity   Float                           // received from Person A's API
+  tli            Float                           // computed by Person B
+  credibility    Float                           // from CredibilityScore
+  finalCapacity  Float                           // final computed value 0–1
+  capacityLabel  String                          // "High" | "Moderate" | "Low"
+  updatedAt      DateTime @default(now())
+
+  intern         Intern   @relation(fields: [internId], references: [id])
+}
+
+model Alert {
+  id         String   @id @default(uuid())
+  internId   String
+  type       String   // "stale_task" | "blocker_escalation" | "compliance_failure" | "reassignment"
+  taskId     String?
+  message    String
+  resolved   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Also add these relations to the existing Intern model in schema.prisma:
+//
+//   tasks            Task[]
+//   credibility      CredibilityScore?
+//   capacityScore    CapacityScore?
+//
+// After adding, run:
+//   npx prisma migrate dev --name add_personB_models
+// ─────────────────────────────────────────────────────────────────────────────

@@ -40,6 +40,12 @@ function mapStateToProgress(stateGroup) {
 }
 
 async function syncTasksFromPlane() {
+  // Skip silently if Plane is not configured — avoids noisy errors in local dev
+  if (!PLANE_BASE_URL || !PLANE_API_KEY || !WORKSPACE_SLUG || !PROJECT_ID) {
+    logger.debug('Plane not configured — skipping syncTasksFromPlane');
+    return { synced: 0 };
+  }
+
   try {
     const response = await axiosPlane.get(
       `${PLANE_BASE_URL}/workspaces/${WORKSPACE_SLUG}/projects/${PROJECT_ID}/issues/`,
@@ -101,6 +107,12 @@ async function syncTasksFromPlane() {
  * @returns {Promise<{ synced: number, error?: string }>}
  */
 async function syncSingleIssueFromPlane(issueId) {
+  // Skip silently if Plane is not configured
+  if (!PLANE_BASE_URL || !PLANE_API_KEY || !WORKSPACE_SLUG || !PROJECT_ID) {
+    logger.debug('Plane not configured — skipping syncSingleIssueFromPlane');
+    return { synced: 0 };
+  }
+
   try {
     const response = await axiosPlane.get(
       `${PLANE_BASE_URL}/workspaces/${WORKSPACE_SLUG}/projects/${PROJECT_ID}/issues/${issueId}/`,

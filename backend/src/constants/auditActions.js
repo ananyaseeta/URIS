@@ -16,9 +16,10 @@ const AUDIT_ACTIONS = Object.freeze({
   LOGOUT:          'LOGOUT',
 
   // ── Tasks ──────────────────────────────────────────────────────────────────
-  CREATE_TASK:     'CREATE_TASK',
-  UPDATE_TASK:     'UPDATE_TASK',
-  ASSIGN_TASK:     'ASSIGN_TASK',
+  CREATE_TASK:          'CREATE_TASK',
+  UPDATE_TASK:          'UPDATE_TASK',
+  ASSIGN_TASK:          'ASSIGN_TASK',
+  INTERN_UPDATE_TASK:   'INTERN_UPDATE_TASK',
 
   // ── Scores ─────────────────────────────────────────────────────────────────
   OVERRIDE_SCORE:  'OVERRIDE_SCORE',

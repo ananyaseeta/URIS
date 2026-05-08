@@ -37,6 +37,13 @@ export interface UpdateStatusPayload {
   progress: number
 }
 
+export interface UpdateProgressPayload {
+  progressPct: number
+  note?: string
+  hasBlocker?: boolean
+  blockerType?: string | null
+}
+
 export async function getAllTasks(): Promise<Task[]> {
   const res = await api.get<{ success: boolean; data: Task[] }>('/tasks')
   return res.data.data
@@ -49,4 +56,8 @@ export async function createTask(payload: CreateTaskPayload): Promise<Task> {
 
 export async function updateTaskStatus(payload: UpdateStatusPayload): Promise<void> {
   await api.post('/admin/task/status', payload)
+}
+
+export async function updateTaskProgress(taskId: string, payload: UpdateProgressPayload): Promise<void> {
+  await api.patch(`/tasks/${taskId}/progress`, payload)
 }

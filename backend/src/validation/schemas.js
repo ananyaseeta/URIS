@@ -419,6 +419,37 @@ const updateTaskStatus = Joi.object({
   query:  Joi.object(),
 });
 
+// Intern self-update — progress percentage + optional note only
+// Interns cannot change status to 'completed' (admin-only action)
+const internUpdateTask = Joi.object({
+  body: Joi.object({
+    progressPct: Joi.number()
+      .integer()
+      .min(0)
+      .max(99)
+      .required()
+      .messages({
+        'number.base':    'progressPct must be a number',
+        'number.integer': 'progressPct must be an integer',
+        'number.min':     'progressPct must be between 0 and 99',
+        'number.max':     'progressPct must be between 0 and 99 — only admins can mark tasks complete',
+        'any.required':   'progressPct is required',
+      }),
+    note: Joi.string().max(280).optional().allow('', null).messages({
+      'string.max': 'note must not exceed 280 characters',
+    }),
+    hasBlocker: Joi.boolean().optional(),
+    blockerType: Joi.string()
+      .valid(...VALID_BLOCKER_TYPES)
+      .optional()
+      .messages({ 'any.only': `blockerType must be one of: ${VALID_BLOCKER_TYPES.join(', ')}` }),
+  }).required(),
+  params: Joi.object({
+    taskId: uuid.required().messages({ 'any.required': 'taskId param is required' }),
+  }).required(),
+  query: Joi.object(),
+});
+
 // ── Assignment ─────────────────────────────────────────────────────────────────
 //
 // Design §11.3 — ASL Triad: Availability → Skill → Load
@@ -628,6 +659,7 @@ module.exports = {
     // admin
     overrideScore,
     updateTaskStatus,
+    internUpdateTask,
     // assignment
     getShortlist,
     assignTask,

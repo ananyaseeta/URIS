@@ -147,4 +147,63 @@ async function createTask(req, res, next) {
   }
 }
 
-module.exports = { getTasksOverview, getTasks, createTask };
+module.exports = { getTasksOverview, getTasks, createTask, internUpdateTask };
+
+async function internUpdateTask(req, res, next) {
+  try {
+    const { taskId } = req.params;
+    const { progressPct, note, hasBlocker, blockerType } = req.body;
+
+    // Resolve the intern record for the authenticated user
+    const intern = await prisma.intern.findUnique({ where: { userId: req.user.id } });
+    if (!intern) {
+      return notFound(res, 'Intern record not found');
+    }
+
+    // Fetch the task and verify ownership
+    const task = await prisma.task.findUnique({ where: { id: taskId } });
+    if (!task) {
+      return notFound(res, 'Task not found');
+    }
+    if (task.internId !== intern.id) {
+      const { forbidden } = require('../utils/respond');
+      return forbidden(res, 'You can only update your own tasks');
+    }
+    if (task.status === 'completed') {
+      return validationError(res, 'Cannot update a completed task');
+    }
+
+    const updateData = {
+      progressPct,
+      lastUpdatedAt: new Date(),
+      ...(typeof hasBlocker === 'boolean' ? { hasBlocker } : {}),
+      ...(blockerType !== undefined ? { blockerType: hasBlocker ? blockerType : null } : {}),
+    };
+
+    const updated = await prisma.task.update({
+      where: { id: taskId },
+      data:  updateData,
+    });
+
+    void logAction(req.user.id, AUDIT_ACTIONS.INTERN_UPDATE_TASK, AUDIT_ENTITIES.TASK, taskId, {
+      taskId,
+      internId:       intern.id,
+      progressPct,
+      note:           note ?? null,
+      hasBlocker:     hasBlocker ?? task.hasBlocker,
+      blockerType:    blockerType ?? null,
+    });
+
+    logger.info({ taskId, internId: intern.id, progressPct }, 'Intern updated task progress');
+
+    return ok(res, {
+      id:           updated.id,
+      progressPct:  updated.progressPct,
+      hasBlocker:   updated.hasBlocker,
+      blockerType:  updated.blockerType,
+      lastUpdatedAt: updated.lastUpdatedAt,
+    }, 'Task progress updated');
+  } catch (err) {
+    next(err);
+  }
+}

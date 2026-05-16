@@ -8,7 +8,6 @@ import { useAuthStore } from '../store/authStore'
 import { extractErrorMessage } from '../services/error'
 
 export default function Login() {
-  const [role, setRole] = useState<'intern' | 'admin'>('intern')
   const [showPw, setShowPw] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -25,7 +24,7 @@ export default function Login() {
       const res = await authAPI.login(email, password)
       const { token, user } = res.data.data as { token: string; user: { id: string; name: string; email: string; role: string } }
       login(token, user as Parameters<typeof login>[1])
-      navigate(user.role === 'intern' ? '/availability' : '/dashboard')
+      navigate(user.role.includes('INTERN') ? '/availability' : '/dashboard')
     } catch (err: unknown) {
       setError(extractErrorMessage(err, 'Invalid credentials. Please try again.'))
     } finally {
@@ -58,19 +57,8 @@ export default function Login() {
         </div>
 
         <div className="glass-card rounded-sm p-8">
-          {/* Role tabs */}
-          <div className="flex mb-8 rounded-sm overflow-hidden" style={{ border: '1px solid rgba(201,168,76,0.15)' }}>
-            {(['intern', 'admin'] as const).map(r => (
-              <button key={r} onClick={() => setRole(r)}
-                className="flex-1 py-2.5 nav-label text-[0.65rem] transition-all duration-300"
-                style={{
-                  background: role === r ? 'rgba(201,168,76,0.12)' : 'transparent',
-                  color: role === r ? '#c9a84c' : 'rgba(184,212,240,0.35)',
-                  borderBottom: role === r ? '1px solid #c9a84c' : '1px solid transparent',
-                }}>
-                {r === 'intern' ? 'INTERN ACCESS' : 'ADMIN'}
-              </button>
-            ))}
+          <div className="mb-4">
+            <p className="nav-label text-[0.65rem] text-ice/40 text-center tracking-widest">LOGIN TO YOUR ACCOUNT</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">

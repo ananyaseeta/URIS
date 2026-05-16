@@ -8,7 +8,7 @@ import { useAuthStore } from '../store/authStore'
 import { extractErrorMessage } from '../services/error'
 
 export default function Register() {
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'intern' })
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'TECHNICAL_INTERN' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [pendingApproval, setPendingApproval] = useState(false)
@@ -32,7 +32,7 @@ export default function Register() {
       }
 
       login(data.token!, data.user)
-      navigate(data.user.role === 'intern' ? '/availability' : '/dashboard')
+      navigate(data.user.role.includes('INTERN') ? '/availability' : '/dashboard')
     } catch (err: unknown) {
       setError(extractErrorMessage(err, 'Registration failed. Please try again.'))
     } finally {
@@ -109,19 +109,29 @@ export default function Register() {
 
             <div>
               <label className="nav-label text-[0.6rem] text-gold/60 block mb-2">ROLE</label>
-              <div className="grid grid-cols-2 gap-3">
-                {(['intern', 'admin'] as const).map(r => (
-                  <button key={r} type="button" onClick={() => update('role', r)}
-                    className="py-3 nav-label text-[0.65rem] rounded-sm transition-all duration-300"
-                    style={{
-                      background: form.role === r ? 'rgba(201,168,76,0.12)' : 'rgba(13,15,28,0.6)',
-                      border: `1px solid ${form.role === r ? 'rgba(201,168,76,0.4)' : 'rgba(201,168,76,0.1)'}`,
-                      color: form.role === r ? '#c9a84c' : 'rgba(184,212,240,0.35)',
-                    }}>
-                    {r === 'intern' ? 'INTERN' : 'ADMIN'}
-                  </button>
-                ))}
-              </div>
+              <select
+                className="uris-input w-full"
+                value={form.role}
+                onChange={e => update('role', e.target.value)}
+              >
+                <optgroup label="Admins">
+                  <option value="CORE_ADMIN">Core Admin</option>
+                </optgroup>
+                <optgroup label="Leads & Managers">
+                  <option value="OPERATIONS_PROGRAM_MANAGER">Operations Program Manager</option>
+                  <option value="TECHNICAL_LEAD">Technical Lead</option>
+                  <option value="OPERATIONS_LEAD">Operations Lead</option>
+                  <option value="RESEARCH_LEAD">Research Lead</option>
+                  <option value="OBSERVER_TEAM_LEAD">Observer Team Lead</option>
+                  <option value="COLLABORATOR_LEAD">Collaborator Lead</option>
+                </optgroup>
+                <optgroup label="Interns">
+                  <option value="TECHNICAL_INTERN">Technical Intern</option>
+                  <option value="OPERATIONS_INTERN">Operations Intern</option>
+                  <option value="RESEARCH_INTERN">Research Intern</option>
+                  <option value="ORENDA_MEMBER">Orenda Member</option>
+                </optgroup>
+              </select>
             </div>
 
             {error && (

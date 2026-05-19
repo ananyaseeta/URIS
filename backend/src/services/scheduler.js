@@ -20,7 +20,7 @@
 
 const cron = require('node-cron');
 const logger = require('../utils/logger');
-const { syncTasksFromPlane, detectAndMarkStaleTasks, generateDeadlineAlerts, generateAvailabilityReminders, generateTaskReminders } = require('./taskService');
+const { syncTasksFromPlane, detectAndMarkStaleTasks, generateDeadlineAlerts, generateAvailabilityReminders, generateTaskReminders, generateFormReminders } = require('./taskService');
 const { generateBlockerAlerts } = require('./alertService');
 const { generateWeeklyDigest } = require('./digestService');
 
@@ -180,7 +180,6 @@ function _startFormReminderJob() {
     return;
   }
   logger.info({ expression }, 'Starting form reminder job');
-  const { generateFormReminders } = require('./taskService');
   _formReminderTask = cron.schedule(expression, async () => {
     try {
       const count = await generateFormReminders();

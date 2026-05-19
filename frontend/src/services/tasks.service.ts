@@ -53,9 +53,33 @@ export interface AdminTaskControlPayload {
   pauseReason?: string
 }
 
-export async function getAllTasks(): Promise<Task[]> {
-  const res = await api.get<{ success: boolean; data: Task[] }>('/tasks')
-  return res.data.data
+export interface TaskPagination {
+  total: number
+  page:  number
+  limit: number
+  pages: number
+}
+
+export interface TaskListResponse {
+  tasks:      Task[]
+  pagination: TaskPagination
+}
+
+export async function getAllTasks(params?: { status?: string; page?: number; limit?: number }): Promise<Task[]> {
+  const res = await api.get<{ success: boolean; data: TaskListResponse }>('/tasks', { params })
+  // Support both old shape (data is array) and new shape (data.tasks is array)
+  const data = res.data.data
+  if (Array.isArray(data)) return data as unknown as Task[]
+  return data.tasks ?? []
+}
+
+export async function getTasksPaginated(params?: { status?: string; page?: number; limit?: number }): Promise<TaskListResponse> {
+  const res = await api.get<{ success: boolean; data: TaskListResponse }>('/tasks', { params })
+  const data = res.data.data
+  if (Array.isArray(data)) {
+    return { tasks: data as unknown as Task[], pagination: { total: (data as unknown as Task[]).length, page: 1, limit: 20, pages: 1 } }
+  }
+  return data
 }
 
 export async function createTask(payload: CreateTaskPayload): Promise<Task> {

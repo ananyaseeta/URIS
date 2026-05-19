@@ -7,6 +7,12 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const PASSWORD_MIN_LENGTH = 6;
 
+// ── Single source of truth for task statuses ──────────────────────────────────
+// Imported from schemas.js constants to avoid duplication.
+// Any change to valid statuses must be made in schemas.js only.
+const { constants: schemaConstants } = require('../validation/schemas');
+const VALID_TASK_STATUSES = schemaConstants.VALID_TASK_STATUSES;
+
 /**
  * Validates auth input fields (register + login).
  *
@@ -159,10 +165,7 @@ function validateCreateTask(data) {
 }
 
 // ── Task status update ─────────────────────────────────────────────────────────
-const VALID_TASK_STATUSES = [
-  'backlog', 'in_progress_early', 'in_progress_mid',
-  'under_review', 'completed', 'active', 'paused',
-];
+// VALID_TASK_STATUSES is imported from schemas.js at the top of this file.
 
 function validateUpdateTaskStatus(data) {
   const errors = [];
@@ -276,10 +279,7 @@ function validateRunDemo(data) {
 }
 
 // ── Pagination ─────────────────────────────────────────────────────────────────
-const VALID_TASK_STATUS_FILTER = [
-  'active', 'completed', 'stale', 'paused',
-  'backlog', 'in_progress_early', 'in_progress_mid', 'under_review',
-];
+// Status filter uses the same set as VALID_TASK_STATUSES (imported above).
 
 function validatePagination({ page, limit, status } = {}) {
   const errors = [];
@@ -293,8 +293,8 @@ function validatePagination({ page, limit, status } = {}) {
   if (limit !== undefined && (isNaN(l) || l < 1 || l > 100))
     errors.push('limit must be an integer between 1 and 100');
 
-  if (status !== undefined && !VALID_TASK_STATUS_FILTER.includes(status.toLowerCase()))
-    errors.push(`status must be one of: ${VALID_TASK_STATUS_FILTER.join(', ')}`);
+  if (status !== undefined && !VALID_TASK_STATUSES.includes(status.toLowerCase()))
+    errors.push(`status must be one of: ${VALID_TASK_STATUSES.join(', ')}`);
 
   return errors;
 }

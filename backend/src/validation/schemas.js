@@ -264,12 +264,10 @@ const createTask = Joi.object({
       'string.max':   'title must not exceed 255 characters',
       'any.required': 'title is required',
     }),
-    description: Joi.string().max(2000).optional().allow('', null).messages({
-      'string.max': 'description must not exceed 2000 characters',
-    }),
     internId: uuid.required().messages({
       'any.required': 'internId is required',
     }),
+    // planeTaskId is optional — a manual UUID fallback is generated if omitted
     planeTaskId: Joi.string().trim().min(1).max(100).optional().allow('', null).messages({
       'string.max': 'planeTaskId must not exceed 100 characters',
     }),
@@ -281,40 +279,14 @@ const createTask = Joi.object({
       'number.max':     'complexity must be between 1 and 5',
       'any.required':   'complexity is required',
     }),
-    // Design §8.1 — duration_category ENUM('short','medium','long')
-    durationCategory: Joi.string()
-      .valid(...VALID_DURATION_CATEGORIES)
-      .required()
-      .messages({
-        'any.only':     `durationCategory must be one of: ${VALID_DURATION_CATEGORIES.join(', ')}`,
-        'any.required': 'durationCategory is required',
-      }),
-    // Design §8.1 — required_skill_tags from 8-category taxonomy
-    requiredSkillTags: Joi.array()
-      .items(Joi.string().valid(...VALID_SKILL_TAGS).messages({
-        'any.only': `each skill tag must be one of: ${VALID_SKILL_TAGS.join(', ')}`,
-      }))
-      .min(1)
-      .max(8)
-      .required()
-      .messages({
-        'array.min':    'at least one skill tag is required',
-        'array.max':    'requiredSkillTags must not exceed 8 items',
-        'any.required': 'requiredSkillTags is required',
-      }),
-    // Design §8.1 — primary_manager_id (required), secondary_manager_id (optional)
-    primaryManagerId: uuid.required().messages({
-      'any.required': 'primaryManagerId is required',
-    }),
-    secondaryManagerId: uuid.optional(),
-    // Design §12.3 — deadline DATE NOT NULL
-    deadline: isoDate.required().messages({
-      'any.required': 'deadline is required',
-    }),
-    priority: Joi.string()
-      .valid('low', 'medium', 'high', 'critical')
-      .default('medium')
-      .messages({ 'any.only': 'priority must be one of: low, medium, high, critical' }),
+    // skills is an optional array of free-text skill tags
+    skills: Joi.array()
+      .items(Joi.string().messages({ 'string.base': 'each skill must be a string' }))
+      .max(20)
+      .optional()
+      .messages({ 'array.max': 'skills must not exceed 20 items' }),
+    // Design §12.3 — deadline DATE (optional for manual tasks)
+    deadline: isoDate.optional().allow(null).messages({}),
   }).required(),
   params: Joi.object(),
   query:  Joi.object(),

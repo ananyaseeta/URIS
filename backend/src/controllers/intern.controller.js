@@ -1,5 +1,5 @@
 const prisma = require('../utils/prisma');
-const { computePerformanceIndex } = require('../services/performanceEngine');
+const { computePerformanceIndex, getRpiWindowStart } = require('../services/performanceEngine');
 const { ok, notFound } = require('../utils/respond');
 const logger = require('../utils/logger');
 

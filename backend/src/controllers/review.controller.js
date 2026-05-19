@@ -1,6 +1,6 @@
 const prisma = require('../utils/prisma');
 const { validateReviewSubmission } = require('../services/businessRules');
-const { ok, created, businessError, notFound } = require('../utils/respond');
+const { ok, created, businessError, notFound, forbidden } = require('../utils/respond');
 const { logAction } = require('../utils/auditLogger');
 const { AUDIT_ACTIONS, AUDIT_ENTITIES } = require('../constants/auditActions');
 

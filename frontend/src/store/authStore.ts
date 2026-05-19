@@ -10,7 +10,7 @@
  *  Actions: login(token, user)  — replaces setAuth
  *           logout()            — replaces clearAuth
  *           setUser(user)       — patch user fields without re-login
- *  Helpers: isAdmin()           — true when role is 'admin'
+ *  Helpers: isAdmin()           — true when role is in ADMIN_ROLES set
  *
  * Backward-compat aliases (kept so existing call-sites don't break):
  *   setAuth  → login
@@ -19,16 +19,40 @@
 
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import { ADMIN_ROLES, type Role } from '../constants/roles'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type UserRole = 'intern' | 'admin'
+/**
+ * UserRole — the full set of role strings the backend can return.
+ * Matches the lowercase values in frontend/src/constants/roles.ts.
+ *
+ * Backward-compat: 'admin' and 'intern' are included so any persisted
+ * localStorage sessions from before the role expansion still hydrate cleanly.
+ */
+export type UserRole =
+  | 'core_admin'
+  | 'technical_lead'
+  | 'operations_lead'
+  | 'research_lead'
+  | 'operations_program_manager'
+  | 'technical_intern'
+  | 'operations_intern'
+  | 'research_intern'
+  | 'observer_team_lead'
+  | 'collaborator_lead'
+  | 'orenda_member'
+  | 'past_employee'
+  // Legacy values — kept for backward compat with persisted sessions
+  | 'admin'
+  | 'intern'
 
 export interface AuthUser {
-  id:    string
-  name:  string
-  email: string
-  role:  UserRole
+  id:     string
+  name:   string
+  email:  string
+  role:   UserRole
+  teamId: string | null   // primary team context from JWT
 }
 
 interface AuthState {
@@ -46,6 +70,10 @@ interface AuthState {
   setUser: (user: AuthUser) => void
 
   // ── Derived helper ─────────────────────────────────────────────────────────
+  /**
+   * Returns true when the user's role is in the ADMIN_ROLES set.
+   * Uses an explicit set check — never substring matching.
+   */
   isAdmin: () => boolean
 
   // ── Backward-compat aliases ────────────────────────────────────────────────
@@ -54,6 +82,13 @@ interface AuthState {
   /** @deprecated Use logout() */
   clearAuth: () => void
 }
+
+// ── Admin role set for O(1) lookup ────────────────────────────────────────────
+// Derived from ADMIN_ROLES in constants/roles.ts — single source of truth.
+const ADMIN_ROLE_SET = new Set<string>(ADMIN_ROLES)
+// Include legacy 'admin' alias so persisted sessions from before the role
+// expansion are still treated as admin without requiring a re-login.
+ADMIN_ROLE_SET.add('admin')
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
@@ -84,8 +119,8 @@ export const useAuthStore = create<AuthState>()(
 
       // ── Derived ─────────────────────────────────────────────────────────────
       isAdmin: () => {
-        const role = get().user?.role || ''
-        return role === 'core_admin' || role.includes('lead') || role.includes('manager') || role === 'admin'
+        const role = get().user?.role ?? ''
+        return ADMIN_ROLE_SET.has(role)
       },
 
       // ── Aliases ─────────────────────────────────────────────────────────────
@@ -119,5 +154,5 @@ export const selectToken           = (s: AuthState): string | null  => s.token
 export const selectUser            = (s: AuthState): AuthUser | null => s.user
 /** Returns true when a valid session exists. */
 export const selectIsAuthenticated = (s: AuthState): boolean        => s.isAuthenticated
-/** Returns true when the user has admin role. */
+/** Returns true when the user has admin-level role. */
 export const selectIsAdmin         = (s: AuthState): boolean        => s.isAdmin()

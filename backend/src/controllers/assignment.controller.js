@@ -79,7 +79,7 @@ async function assignTask(req, res, next) {
     // Business-level rules: intern exists, task exists, no duplicate assignment, task not completed
     const biz = await validateTaskAssignment({ internId, taskId, user: req.user });
     if (!biz.ok) {
-      return res.status(biz.status).json({ success: false, message: biz.message, data: null });
+      return businessError(res, biz.status, biz.message);
     }
 
     const { task } = biz;   // reuse the task fetched during validation
@@ -93,22 +93,14 @@ async function assignTask(req, res, next) {
     });
 
     if (!latestCapacity) {
-      return res.status(400).json({
-        success: false,
-        message: 'Intern has not submitted availability yet. Capacity score is unavailable.',
-        data:    null,
-      });
+      return validationError(res, 'Intern has not submitted availability yet. Capacity score is unavailable.');
     }
 
     const capacityScore = Math.round(latestCapacity.score);
 
     if (capacityScore < MIN_CAPACITY_THRESHOLD) {
       logger.info({ internId, capacityScore, threshold: MIN_CAPACITY_THRESHOLD }, 'Assignment blocked — low capacity');
-      return res.status(400).json({
-        success: false,
-        message: `Intern not eligible for assignment — capacity score ${capacityScore} is below threshold ${MIN_CAPACITY_THRESHOLD}.`,
-        data:    null,
-      });
+      return businessError(res, 400, `Intern not eligible for assignment — capacity score ${capacityScore} is below threshold ${MIN_CAPACITY_THRESHOLD}.`);
     }
 
     await prisma.$transaction([
@@ -145,7 +137,7 @@ async function assignTask(req, res, next) {
       previousInternId: task.internId ?? null,
     });
 
-    return res.status(200).json({ success: true, message: 'Task assigned successfully', data: null });
+    return ok(res, null, 'Task assigned successfully');
   } catch (err) {
     next(err);
   }

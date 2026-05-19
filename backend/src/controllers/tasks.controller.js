@@ -1,7 +1,8 @@
-const { syncTasksFromPlane, detectAndMarkStaleTasks, getTasksOverviewForAllInterns, getTaskFilter } = require('../services/taskService');
+const { syncTasksFromPlane, detectAndMarkStaleTasks, getTasksOverviewForAllInterns, getTaskFilter, removeTask } = require('../services/taskService');
 const { generateBlockerAlerts } = require('../services/alertService');
 const { validateTaskCreation }  = require('../services/businessRules');
-const { ok, created, validationError, businessError, notFound } = require('../utils/respond');
+const { ok, created, validationError, businessError, notFound, forbidden } = require('../utils/respond');
+const { ROLES } = require('../constants/roles');
 const prisma = require('../utils/prisma');
 const { logAction } = require('../utils/auditLogger');
 const { AUDIT_ACTIONS, AUDIT_ENTITIES } = require('../constants/auditActions');
@@ -9,7 +10,7 @@ const { validatePagination } = require('../utils/validate');
 const { randomUUID } = require('crypto');
 const logger = require('../utils/logger');
 
-async function getTasksOverview(req, res) {
+async function getTasksOverview(req, res, next) {
   try {
     await syncTasksFromPlane();
     const staleCount = await detectAndMarkStaleTasks();
@@ -17,30 +18,23 @@ async function getTasksOverview(req, res) {
 
     const filter = await getTaskFilter(req.user);
     const overview = await getTasksOverviewForAllInterns();
-    
-    // Filter the overview data based on the calculated filter
+
+    // Apply role-based intern filter to the overview
     const filteredOverview = overview.filter(item => {
-      // If the user has a filter on internId, apply it
       if (filter.internId && item.internId !== filter.internId) return false;
       return true;
     });
 
-    res.json({
-      success: true,
-      message: `Tasks overview fetched. ${staleCount} stale task(s) detected.`,
-      data: filteredOverview
-    });
+    return ok(res, filteredOverview, `Tasks overview fetched. ${staleCount} stale task(s) detected.`);
   } catch (err) {
-    logger.error({ err }, 'getTasksOverview failed');
-    res.status(500).json({ success: false, message: 'Failed to fetch task overview.', data: null });
+    next(err);
   }
 }
 
 async function getTaskById(req, res, next) {
   try {
     const { taskId } = req.params;
-    const { ROLES } = require('../constants/roles');
-    
+
     const filter = await getTaskFilter(req.user);
     filter.id = taskId;
 
@@ -63,10 +57,6 @@ async function getTaskById(req, res, next) {
       delete task.skills;
     }
 
-    // "Can See Notes: NO" logic
-    // (Assuming notes might be added to the model or are part of the description)
-    // If we have a 'notes' field, we would delete it here for relevant roles.
-    
     return ok(res, task);
   } catch (err) {
     next(err);
@@ -117,7 +107,6 @@ async function getTasks(req, res, next) {
     ]);
 
     // Mask fields for LIMITED roles in list view
-    const { ROLES } = require('../constants/roles');
     const tasksWithAssignee = tasks.map(t => {
       const task = {
         ...t,
@@ -125,21 +114,20 @@ async function getTasks(req, res, next) {
         deadline: t.deadline ? t.deadline.toISOString().split('T')[0] : null,
         intern:   undefined,
       };
-      
+
       if (req.user.role === ROLES.OPERATIONS_LEAD || req.user.role === ROLES.OPERATIONS_PROGRAM_MANAGER) {
         delete task.complexity;
       }
-      
+
       return task;
     });
 
     logger.info({ count: tasks.length }, 'Tasks fetched');
 
-    return res.status(200).json({
-      success: true,
-      data:    tasksWithAssignee,
-      meta:    { total, page: parseInt(page), limit: parseInt(limit) },
-    });
+    return ok(res, {
+      tasks:      tasksWithAssignee,
+      pagination: { total, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(total / parseInt(limit)) },
+    }, 'Tasks fetched');
   } catch (err) {
     next(err);
   }
@@ -206,7 +194,6 @@ async function internUpdateTask(req, res, next) {
       return notFound(res, 'Task not found');
     }
     if (task.internId !== intern.id) {
-      const { forbidden } = require('../utils/respond');
       return forbidden(res, 'You can only update your own tasks');
     }
     if (task.status === 'completed') {
@@ -300,16 +287,15 @@ async function internUpdateTask(req, res, next) {
 async function deleteTask(req, res, next) {
   try {
     const { taskId } = req.params;
-    const { removeTask } = require('../services/taskService');
 
     const task = await prisma.task.findUnique({ where: { id: taskId } });
     if (!task) return notFound(res, 'Task not found');
 
     await removeTask(taskId);
 
-    void logAction(req.user?.id ?? null, AUDIT_ACTIONS.DELETE_TASK || 'DELETE_TASK', AUDIT_ENTITIES.TASK, taskId, {
+    void logAction(req.user?.id ?? null, AUDIT_ACTIONS.DELETE_TASK, AUDIT_ENTITIES.TASK, taskId, {
       taskId,
-      title: task.title,
+      title:    task.title,
       internId: task.internId,
     });
 

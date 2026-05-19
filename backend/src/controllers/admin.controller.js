@@ -3,6 +3,9 @@ const { logAction } = require('../utils/auditLogger');
 const { AUDIT_ACTIONS, AUDIT_ENTITIES } = require('../constants/auditActions');
 const { validateUpdateTaskStatus, isUUID } = require('../utils/validate');
 const { ok, validationError, notFound } = require('../utils/respond');
+const { ROLES, normalizeRole } = require('../constants/roles');
+const { getTaskFilter } = require('../services/taskService');
+const { invalidateCache } = require('../middleware/ipBlock.middleware');
 const configStore = require('../services/configStore');
 const { getCapacityLabel } = require('../services/capacityEngine');
 const { getRpiWindowStart } = require('../services/performanceEngine');
@@ -122,9 +125,7 @@ async function updateTaskStatus(req, res, next) {
 
 async function getAdminOverview(req, res, next) {
   try {
-    const { getTaskFilter } = require('../services/taskService');
     const filter = await getTaskFilter(req.user);
-    const { ROLES } = require('../constants/roles');
     
     let internFilter = {};
     let alertFilter = { resolved: false };
@@ -409,4 +410,155 @@ async function finishInternship(req, res, next) {
   }
 }
 
-module.exports = { overrideScore, updateTaskStatus, getAdminOverview, getPendingUsers, approveUser, getAvailabilityDeadline, setAvailabilityDeadline, finishInternship };
+module.exports = { overrideScore, updateTaskStatus, getAdminOverview, getPendingUsers, approveUser, getAvailabilityDeadline, setAvailabilityDeadline, finishInternship, blockIP, unblockIP, listBlockedIPs, getLoginLogs, changeUserRole };
+
+// ── Phase 2: IP Block Management ──────────────────────────────────────────────
+
+async function blockIP(req, res, next) {
+  try {
+    const { ipAddress, reason, expiresAt } = req.body;
+    if (!ipAddress || typeof ipAddress !== 'string') {
+      return validationError(res, 'ipAddress is required');
+    }
+
+    const existing = await prisma.blockedIP.findUnique({ where: { ipAddress } });
+    if (existing) {
+      const updated = await prisma.blockedIP.update({
+        where: { ipAddress },
+        data: {
+          reason:      reason ?? existing.reason,
+          expiresAt:   expiresAt ? new Date(expiresAt) : null,
+          blockedById: req.user?.id ?? null,
+          blockedAt:   new Date(),
+        },
+      });
+      invalidateCache(ipAddress);
+      void logAction(req.user?.id ?? null, 'BLOCK_IP', 'SYSTEM', null, { ipAddress, reason });
+      return ok(res, updated, `IP ${ipAddress} block updated.`);
+    }
+
+    const block = await prisma.blockedIP.create({
+      data: {
+        ipAddress,
+        reason:      reason ?? null,
+        expiresAt:   expiresAt ? new Date(expiresAt) : null,
+        blockedById: req.user?.id ?? null,
+      },
+    });
+    invalidateCache(ipAddress);
+    void logAction(req.user?.id ?? null, 'BLOCK_IP', 'SYSTEM', null, { ipAddress, reason });
+    return ok(res, block, `IP ${ipAddress} blocked.`);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function unblockIP(req, res, next) {
+  try {
+    const { ipAddress } = req.body;
+    if (!ipAddress) return validationError(res, 'ipAddress is required');
+
+    const existing = await prisma.blockedIP.findUnique({ where: { ipAddress } });
+    if (!existing) return notFound(res, 'IP block not found');
+
+    await prisma.blockedIP.delete({ where: { ipAddress } });
+    invalidateCache(ipAddress);
+    void logAction(req.user?.id ?? null, 'UNBLOCK_IP', 'SYSTEM', null, { ipAddress });
+    return ok(res, null, `IP ${ipAddress} unblocked.`);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function listBlockedIPs(req, res, next) {
+  try {
+    const blocks = await prisma.blockedIP.findMany({
+      orderBy: { blockedAt: 'desc' },
+    });
+    return ok(res, blocks, 'Blocked IPs fetched');
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getLoginLogs(req, res, next) {
+  try {
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    const skip  = (page - 1) * limit;
+
+    const where = {};
+    if (req.query.success !== undefined) {
+      where.success = req.query.success === 'true';
+    }
+    if (req.query.ipAddress) {
+      where.ipAddress = req.query.ipAddress;
+    }
+    if (req.query.email) {
+      where.email = { contains: req.query.email, mode: 'insensitive' };
+    }
+
+    const [total, logs] = await Promise.all([
+      prisma.loginLog.count({ where }),
+      prisma.loginLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take:    limit,
+        skip,
+      }),
+    ]);
+
+    return ok(res, { logs, pagination: { page, limit, total, pages: Math.ceil(total / limit) } }, 'Login logs fetched');
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ── Phase 2: Role Change (Promotion-safe) ─────────────────────────────────────
+
+async function changeUserRole(req, res, next) {
+  try {
+    const { userId, newRole, reason } = req.body;
+    if (!userId)  return validationError(res, 'userId is required');
+    if (!newRole) return validationError(res, 'newRole is required');
+
+    const normalizedRole = normalizeRole(newRole);
+    if (!normalizedRole) return validationError(res, `Invalid role "${newRole}"`);
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return notFound(res, 'User not found');
+
+    if (user.role === normalizedRole) {
+      return validationError(res, `User already has role ${normalizedRole}`);
+    }
+
+    const previousRole = user.role;
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: userId },
+        data:  { role: normalizedRole },
+      }),
+      prisma.userRoleHistory.create({
+        data: {
+          userId,
+          previousRole,
+          newRole:     normalizedRole,
+          changedById: req.user?.id ?? null,
+          reason:      reason ?? null,
+        },
+      }),
+    ]);
+
+    void logAction(req.user?.id ?? null, 'CHANGE_USER_ROLE', 'USER', userId, {
+      userId,
+      previousRole,
+      newRole: normalizedRole,
+      reason:  reason ?? null,
+    });
+
+    return ok(res, { userId, previousRole, newRole: normalizedRole }, `Role updated to ${normalizedRole}`);
+  } catch (err) {
+    next(err);
+  }
+}

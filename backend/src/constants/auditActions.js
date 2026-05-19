@@ -18,6 +18,7 @@ const AUDIT_ACTIONS = Object.freeze({
   // ── Tasks ──────────────────────────────────────────────────────────────────
   CREATE_TASK:          'CREATE_TASK',
   UPDATE_TASK:          'UPDATE_TASK',
+  DELETE_TASK:          'DELETE_TASK',
   ASSIGN_TASK:          'ASSIGN_TASK',
   INTERN_UPDATE_TASK:   'INTERN_UPDATE_TASK',
 

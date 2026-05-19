@@ -64,3 +64,11 @@ Interns declare their availability weekly.
   1. Interns go to `/availability` to submit their hours, continuous free block limits, and busy blocks.
   2. **Exam Week Penalty:** Toggling "Exam Week" applies an automatic `-30` penalty to the Capacity Score for that week.
   3. **Deadline Management:** Admins can adjust the weekly cutoff time (default: Monday 11:00 AM) from the Admin panel.
+
+### 7. Interactive Ambient Background (Starfield)
+The application layout floats over a responsive, multi-layered particle starfield.
+* **How it responds:**
+  1. **Hover Physics:** Moving the mouse cursor over the viewport repels nearby beads/particles. Once the cursor moves away, the particles return to their natural coordinates via a spring-back equation.
+  2. **3D Depth Parallax:** Scrolling the page shifts particles at different vertical speeds based on their size/radius (larger particles scroll faster), creating an illusion of visual depth.
+  3. **Twinkling & Drifting:** Particles twinkle and float on a slow drift path dynamically, wrapping around the boundaries.
+

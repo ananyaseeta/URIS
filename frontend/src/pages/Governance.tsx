@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Shield, CheckCircle, X, Clock, Loader2, AlertTriangle,
-  ChevronDown, ChevronUp, Key, Users, TrendingUp, Lock, Eye,
+  ChevronDown, ChevronUp, Key, Users, TrendingUp, Lock,
 } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 import Starfield from '../components/Starfield'
@@ -12,14 +12,13 @@ import {
   listApprovals, approveRequest, rejectRequest, cancelApprovalRequest,
   getMyPermissions, getAllUsers, getRoleHistory, getAccessMatrix, getSecurityOverview,
   submitPromotionRequest,
-  type ApprovalRequest, type ApprovalStatus, type PermissionsResponse,
+  type ApprovalRequest, type PermissionsResponse,
   type GovernanceUser, type RoleHistoryRecord, type AccessMatrixResponse, type SecurityOverview,
 } from '../services/governance.service'
 import { extractErrorMessage } from '../services/error'
 
 const GOLD    = '#c9a84c'
 const ICE_DIM = 'rgba(184,212,240,0.25)'
-const ICE     = 'rgba(184,212,240,0.7)'
 const GREEN   = '#4ade80'
 const AMBER   = '#f59e0b'
 const RED     = '#f87171'
@@ -218,10 +217,9 @@ function ApprovalsTab({ pending, history, currentUserId, onApprove, onReject, on
 }
 
 // ── Promotions Tab ────────────────────────────────────────────────────────────
-function PromotionsTab({ users, onSubmit, msg }: {
+function PromotionsTab({ users, onSubmit }: {
   users: GovernanceUser[]
   onSubmit: (userId: string, newRole: string, reason: string) => Promise<void>
-  msg: { ok: boolean; text: string } | null
 }) {
   const [selectedUser, setSelectedUser] = useState('')
   const [newRole, setNewRole]           = useState('')
@@ -788,7 +786,7 @@ export default function Governance() {
 
               <motion.div key={tab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
                 {tab === 'approvals'     && <ApprovalsTab pending={pending} history={history} currentUserId={user?.id ?? ''} onApprove={handleApprove} onReject={handleReject} onCancel={handleCancel} loading={actionLoading} subTab={approvalSubTab} setSubTab={setApprovalSubTab} />}
-                {tab === 'promotions'    && <PromotionsTab users={users} onSubmit={handlePromotion} msg={msg} />}
+                {tab === 'promotions'    && <PromotionsTab users={users} onSubmit={handlePromotion} />}
                 {tab === 'users'         && <UsersTab users={users} />}
                 {tab === 'role-history'  && <RoleHistoryTab records={roleHistory} />}
                 {tab === 'access-matrix' && <AccessMatrixTab matrix={accessMatrix} />}

@@ -19,7 +19,7 @@
 
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import { ADMIN_ROLES } from '../constants/roles'
+import { ADMIN_ROLES, type Role } from '../constants/roles'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

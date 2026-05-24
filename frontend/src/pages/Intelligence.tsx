@@ -139,7 +139,7 @@ function OverviewTab({ data }: { data: AnalyticsDashboard }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard icon={AlertTriangle} label="CRITICAL RISKS"   value={taskRisks.counts.critical}     color={RED} />
         <StatCard icon={Clock}         label="HIGH RISKS"       value={taskRisks.counts.high}         color={AMBER} />
-        <StatCard icon={Shield}        label="SLA BREACHES"     value={sla.counts.staleTasks + sla.counts.overdueTasks} color={RED} />
+        <StatCard icon={AlertTriangle} label="SLA BREACHES"     value={sla.counts.staleTasks + sla.counts.overdueTasks} color={RED} />
         <StatCard icon={Activity}      label="SUPPORT OPEN"     value={support.total}                 sub={`${support.slaBreachCount} breaching SLA`} color={AMBER} />
       </div>
       <div className="glass-card rounded-sm p-5">
@@ -517,69 +517,6 @@ function AlertsTab({ data }: { data: AnalyticsDashboard }) {
               </div>
             ))}
           </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── SLA Tab ───────────────────────────────────────────────────────────────────
-function SLATab({ data }: { data: AnalyticsDashboard }) {
-  const { sla } = data
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard icon={Clock}         label="STALE TASKS"         value={sla.counts.staleTasks}         color={AMBER} sub={`>${sla.thresholds.staleDays}d no update`} />
-        <StatCard icon={AlertTriangle} label="OVERDUE TASKS"       value={sla.counts.overdueTasks}       color={RED} />
-        <StatCard icon={Zap}           label="UNRESOLVED BLOCKERS" value={sla.counts.unresolvedBlockers} color={AMBER} />
-        <StatCard icon={Shield}        label="SUPPORT BREACHES"    value={sla.counts.supportBreaches}    color={RED} sub={`>${sla.thresholds.supportHours}h open`} />
-      </div>
-      {sla.overdueTasks.length > 0 && (
-        <div className="glass-card rounded-sm p-5">
-          <SectionHeader label="SLA BREACH" title="Overdue Tasks" />
-          <div className="overflow-x-auto">
-            <table className="uris-table w-full">
-              <thead><tr>
-                <th className="text-left">Task</th><th className="text-left">Intern</th>
-                <th className="text-center">Progress</th><th className="text-center">Days Overdue</th><th className="text-center">Status</th>
-              </tr></thead>
-              <tbody>
-                {sla.overdueTasks.map(t => (
-                  <tr key={t.id}>
-                    <td className="font-body text-sm text-frost/80 max-w-[200px] truncate">{t.title}</td>
-                    <td className="font-body text-sm text-ice/60">{t.internName}</td>
-                    <td className="text-center font-mono text-sm">{t.progressPct}%</td>
-                    <td className="text-center font-mono text-sm" style={{ color: RED }}>{t.daysOverdue}d</td>
-                    <td className="text-center"><StatusBadge status={t.status} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-      {sla.unresolvedBlockers.length > 0 && (
-        <div className="glass-card rounded-sm p-5">
-          <SectionHeader label="BLOCKERS" title="Unresolved Blockers" />
-          <div className="space-y-2">
-            {sla.unresolvedBlockers.map(t => (
-              <div key={t.id} className="flex items-center justify-between p-3 rounded-sm"
-                style={{ background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.15)' }}>
-                <div>
-                  <p className="font-body text-sm text-frost/80">{t.title}</p>
-                  <p className="nav-label text-[0.5rem] mt-0.5" style={{ color: ICE_DIM }}>{t.internName} · {t.blockerType ?? 'unspecified'}</p>
-                </div>
-                <span className="nav-label text-[0.5rem] px-2 py-0.5 rounded-full flex-shrink-0"
-                  style={{ background: 'rgba(248,113,113,0.12)', color: RED }}>BLOCKED</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      {sla.counts.staleTasks === 0 && sla.counts.overdueTasks === 0 && sla.counts.unresolvedBlockers === 0 && sla.counts.supportBreaches === 0 && (
-        <div className="glass-card rounded-sm p-10 text-center">
-          <CheckCircle size={28} className="mx-auto mb-3" style={{ color: GREEN }} />
-          <p className="font-body text-sm" style={{ color: ICE_DIM }}>All SLA metrics are within thresholds.</p>
         </div>
       )}
     </div>

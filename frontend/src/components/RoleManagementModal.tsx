@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { X, Search, ShieldCheck, Loader2, Check } from 'lucide-react'
 import { getAllUsers, changeUserRole, type AdminUser } from '../services/collaboration.service'
 import { extractErrorMessage } from '../services/error'

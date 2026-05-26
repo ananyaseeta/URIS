@@ -233,7 +233,7 @@ async function getWorkloadDistribution() {
     const overdueTasks = intern.tasks.filter(t => t.deadline && new Date(t.deadline) < now);
 
     const rawTli = calculateInternTLI(activeTasks);
-
+    const tli = rawTli;
 
     const capacityScore = intern.scoreHistory[0]
       ? Math.round(intern.scoreHistory[0].score)
@@ -913,7 +913,7 @@ async function getAssignmentReadiness() {
 
 
     const recommendation =
-      tli > OVERLOAD_THRESHOLD || capacityScore < 20 ? 'do_not_assign' :
+      effectiveTli > OVERLOAD_THRESHOLD || capacityScore < 20 ? 'do_not_assign' :
       readinessScore >= 65 ? 'ready' :
       readinessScore >= 40 ? 'available_with_caution' :
       'low_availability';
@@ -923,7 +923,7 @@ async function getAssignmentReadiness() {
       name:           intern.user?.name || intern.user?.email?.split('@')[0] || intern.id,
       capacityScore,
       credScore,
-      tli:            parseFloat(tli.toFixed(2)),
+      tli:            parseFloat(effectiveTli.toFixed(2)),
       activeTasks:    activeTasks.length,
       hasBlocker,
       submittedThisWeek,

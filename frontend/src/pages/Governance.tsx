@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Shield, CheckCircle, X, Clock, Loader2, AlertTriangle,
   ChevronDown, ChevronUp, Key, Users, TrendingUp, Lock, Edit2, Save, RotateCcw,
-  Activity, ShieldAlert, Radio,
+  Activity, ShieldAlert, Radio, Ban,
 } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 import Starfield from '../components/Starfield'
@@ -12,7 +12,7 @@ import { ROLES } from '../constants/roles'
 import {
   listApprovals, approveRequest, rejectRequest, cancelApprovalRequest,
   getMyPermissions, getAllUsers, getRoleHistory, getAccessMatrix, updateAccessMatrix, getSecurityOverview,
-  submitPromotionRequest, getGovernanceIntelligenceOverview,
+  submitPromotionRequest, getGovernanceIntelligenceOverview, blockIP,
   type ApprovalRequest, type PermissionsResponse,
   type GovernanceUser, type RoleHistoryRecord, type AccessMatrixResponse, type SecurityOverview,
   type GovernanceIntelligenceOverview,
@@ -664,8 +664,25 @@ function AccessMatrixTab({ matrix, onSave }: { matrix: AccessMatrixResponse | nu
 function SecurityTab({ security }: { security: SecurityOverview | null }) {
   if (!security) return <div className="flex justify-center py-16"><Loader2 size={20} className="animate-spin" style={{ color: GOLD }} /></div>
   const { summary, blockedIPs, suspiciousIPs, recentFailedLogins } = security
+  const [blockingIP, setBlockingIP] = useState<string | null>(null)
+  const [blockMsg, setBlockMsg]     = useState<{ ok: boolean; text: string } | null>(null)
+
+  async function handleBlockIP(ip: string) {
+    setBlockingIP(ip)
+    setBlockMsg(null)
+    try {
+      await blockIP(ip, 'Blocked from Governance panel — suspicious login activity')
+      setBlockMsg({ ok: true, text: `${ip} has been blocked.` })
+    } catch {
+      setBlockMsg({ ok: false, text: `Failed to block ${ip}.` })
+    } finally {
+      setBlockingIP(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
+      {blockMsg && <FeedbackBanner ok={blockMsg.ok} text={blockMsg.text} />}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <div className="glass-card rounded-sm p-4">
           <p className="nav-label text-[0.5rem] mb-1" style={{ color: ICE_DIM }}>FAILED LOGINS (24H)</p>
@@ -701,9 +718,22 @@ function SecurityTab({ security }: { security: SecurityOverview | null }) {
               <div key={s.ip} className="flex items-center justify-between p-3 rounded-sm"
                 style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)' }}>
                 <span className="font-mono text-sm text-frost/80">{s.ip}</span>
-                <span className="nav-label text-[0.5rem] px-2 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.12)', color: AMBER }}>
-                  {s.failCount} FAILURES
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="nav-label text-[0.5rem] px-2 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.12)', color: AMBER }}>
+                    {s.failCount} FAILURES
+                  </span>
+                  <motion.button
+                    whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                    onClick={() => handleBlockIP(s.ip)}
+                    disabled={blockingIP === s.ip}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-sm nav-label text-[0.5rem] disabled:opacity-50 transition-all"
+                    style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.3)', color: RED }}>
+                    {blockingIP === s.ip
+                      ? <Loader2 size={10} className="animate-spin" />
+                      : <Ban size={10} />}
+                    BLOCK IP
+                  </motion.button>
+                </div>
               </div>
             ))}
           </div>

@@ -116,8 +116,8 @@ export default function PortfolioEdit() {
                 <div>
                   <label className="nav-label text-[0.55rem] text-gold/60 block mb-1.5">PROFILE PICTURE URL</label>
                   <div className="relative">
-                    <User size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-ice/30" />
-                    <input className="uris-input pl-9" placeholder="https://..." value={data?.profilePic || ''}
+                    <User size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-ice/30 pointer-events-none" />
+                    <input className="uris-input" style={{ paddingLeft: '2.25rem' }} placeholder="https://..." value={data?.profilePic || ''}
                       onChange={e => setData(d => d ? { ...d, profilePic: e.target.value } : null)} />
                   </div>
                 </div>
@@ -126,16 +126,16 @@ export default function PortfolioEdit() {
                   <div>
                     <label className="nav-label text-[0.55rem] text-gold/60 block mb-1.5">LINKEDIN URL</label>
                     <div className="relative">
-                      <Globe size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-ice/30" />
-                      <input className="uris-input pl-9" placeholder="linkedin.com/in/..." value={data?.linkedinUrl || ''}
+                      <Globe size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-ice/30 pointer-events-none" />
+                      <input className="uris-input" style={{ paddingLeft: '2.25rem' }} placeholder="linkedin.com/in/..." value={data?.linkedinUrl || ''}
                         onChange={e => setData(d => d ? { ...d, linkedinUrl: e.target.value } : null)} />
                     </div>
                   </div>
                   <div>
                     <label className="nav-label text-[0.55rem] text-gold/60 block mb-1.5">CONTACT NUMBER</label>
                     <div className="relative">
-                      <Phone size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-ice/30" />
-                      <input className="uris-input pl-9" placeholder="+1..." value={data?.contactNumber || ''}
+                      <Phone size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-ice/30 pointer-events-none" />
+                      <input className="uris-input" style={{ paddingLeft: '2.25rem' }} placeholder="+1..." value={data?.contactNumber || ''}
                         onChange={e => setData(d => d ? { ...d, contactNumber: e.target.value } : null)} />
                     </div>
                   </div>

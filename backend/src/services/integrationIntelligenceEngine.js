@@ -189,6 +189,7 @@ async function analyzeDocumentActivity({ internIds, staleDaysThreshold = 3 }) {
 
     return {
       internId: intern.id,
+      internName: intern.user?.name || intern.user?.email?.split('@')[0] || intern.id,
       integration: 'google_docs',
       documentActivity: {
         lastDocumentUpdate: intern.gdocLastModified,
@@ -333,11 +334,11 @@ async function computeIntegrationIntelligence({ internIds, staleDaysThreshold = 
   ]);
 
   const byIntern = {};
-  for (const r of doc) byIntern[r.internId] = { internId: r.internId, explain: { sources: [] } };
-  for (const r of calendar) byIntern[r.internId] = byIntern[r.internId] || { internId: r.internId, explain: { sources: [] } };
-  for (const r of drive) byIntern[r.internId] = byIntern[r.internId] || { internId: r.internId, explain: { sources: [] } };
-  for (const r of collab) byIntern[r.internId] = byIntern[r.internId] || { internId: r.internId, explain: { sources: [] } };
-  for (const r of delivery) byIntern[r.internId] = byIntern[r.internId] || { internId: r.internId, explain: { sources: [] } };
+  for (const r of doc) byIntern[r.internId] = { internId: r.internId, internName: r.internName, explain: { sources: [] } };
+  for (const r of calendar) byIntern[r.internId] = byIntern[r.internId] || { internId: r.internId, internName: r.internId, explain: { sources: [] } };
+  for (const r of drive) byIntern[r.internId] = byIntern[r.internId] || { internId: r.internId, internName: r.internId, explain: { sources: [] } };
+  for (const r of collab) byIntern[r.internId] = byIntern[r.internId] || { internId: r.internId, internName: r.internId, explain: { sources: [] } };
+  for (const r of delivery) byIntern[r.internId] = byIntern[r.internId] || { internId: r.internId, internName: r.internId, explain: { sources: [] } };
 
   // Merge pieces
   for (const d of doc) {
@@ -465,7 +466,7 @@ async function detectOperationalRisk({ integrationIntelligenceRows, now = new Da
       });
 
       if (!existing) {
-        const message = `INTEGRATION RISK: Google Docs inactivity detected for intern ${row.internId}. DocumentActivityScore=${row.documentActivityScore}. InactivityDays=${inactivityDays ?? 'unknown'}.`;
+        const message = `INTEGRATION RISK: Google Docs inactivity detected for ${row.internName ?? row.internId}. DocumentActivityScore=${row.documentActivityScore}. ${inactivityDays != null ? `InactivityDays=${inactivityDays}.` : 'No Google Doc connected.'}`;
         await prismaAlert.create({
           data: {
             internId: row.internId,
@@ -493,7 +494,7 @@ async function detectOperationalRisk({ integrationIntelligenceRows, now = new Da
       });
 
       if (!existing) {
-        const message = `DELIVERY RISK (Docs): Missing/low progress updates inferred from Google Docs cadence for intern ${row.internId}. DocumentActivityScore=${row.documentActivityScore}.`;
+        const message = `DELIVERY RISK (Docs): Missing/low progress updates inferred from Google Docs cadence for ${row.internName ?? row.internId}. DocumentActivityScore=${row.documentActivityScore}.`;
         await prismaAlert.create({
           data: {
             internId: row.internId,
@@ -527,7 +528,7 @@ async function detectOperationalRisk({ integrationIntelligenceRows, now = new Da
             internId: row.internId,
             type,
             severity,
-            message: `COLLAB RISK: Collaboration/visibility risk inferred from Google Docs updates for intern ${row.internId}. Patterns=${patterns.join(',') || 'unknown'}. DocumentActivityScore=${row.documentActivityScore}.`,
+            message: `COLLAB RISK: Collaboration/visibility risk inferred from Google Docs updates for ${row.internName ?? row.internId}. Patterns=${patterns.join(',') || 'none'}. DocumentActivityScore=${row.documentActivityScore}.`,
           },
         });
         createdAlerts.push({ internId: row.internId, type, severity });

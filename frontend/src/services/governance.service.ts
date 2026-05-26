@@ -263,3 +263,13 @@ export interface GovernanceIntelligenceOverview {
 export function getGovernanceIntelligenceOverview(): Promise<GovernanceIntelligenceOverview> {
   return wrap(api.get('/governance/intelligence-overview'))
 }
+
+// ── IP Block Management ───────────────────────────────────────────────────────
+
+export async function blockIP(ipAddress: string, reason?: string): Promise<void> {
+  await api.post('/admin/block-ip', { ipAddress, reason: reason ?? 'Blocked via Governance panel' })
+}
+
+export async function unblockIP(ipAddress: string): Promise<void> {
+  await api.delete('/admin/block-ip', { data: { ipAddress } })
+}

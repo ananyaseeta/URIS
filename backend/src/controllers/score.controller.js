@@ -3,28 +3,34 @@ const { ok, notFound, forbidden } = require('../utils/respond');
 
 async function getScoreHistory(req, res, next) {
   try {
-    // Parse to integer — req.params values are always strings, intern.id is an integer
-    const internId = parseInt(req.params.internId, 10);
-    if (isNaN(internId)) {
-      return forbidden(res, 'Invalid internId');
+    const take = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+    const skip = parseInt(req.query.offset, 10) || 0;
+
+    // Build where clause based on query params
+    const where: any = {};
+
+    // Filter by internId if provided (query param or params)
+    const internId = parseInt(req.params.internId, 10) || parseInt(req.query.internId, 10);
+    if (!isNaN(internId)) {
+      where.internId = internId;
     }
 
-    if (req.user.role !== 'ADMIN') {
+    // Filter by scoreType if provided
+    if (req.query.scoreType) {
+      where.scoreType = req.query.scoreType;
+    }
+
+    // If user is not admin, restrict to their own intern record
+    if (req.user.role !== 'ADMIN' && req.user.role !== 'lead') {
       const intern = await prisma.intern.findUnique({ where: { userId: req.user.id } });
       if (!intern) {
         return notFound(res, 'Intern not found');
       }
-      // Both sides are now integers — comparison is type-safe
-      if (intern.id !== internId) {
-        return forbidden(res, 'Access denied');
-      }
+      where.internId = intern.id;
     }
 
-    const take = Math.min(parseInt(req.query.limit, 10) || 50, 200);
-    const skip = parseInt(req.query.offset, 10) || 0;
-
     const history = await prisma.scoreHistory.findMany({
-      where:   { internId },
+      where,
       orderBy: { createdAt: 'desc' },
       take,
       skip,

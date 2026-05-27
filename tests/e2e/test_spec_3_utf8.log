@@ -1,0 +1,234 @@
+﻿
+Running 5 tests using 1 worker
+
+  ok 1 [chromium] ΓÇ║ 03-task-assignment.spec.ts:19:3 ΓÇ║ Task Assignment ΓÇ║ admin dashboard loads with intern capacity table (1.9s)
+  ok 2 [chromium] ΓÇ║ 03-task-assignment.spec.ts:25:3 ΓÇ║ Task Assignment ΓÇ║ admin can navigate to admin overview (2.1s)
+  x  3 [chromium] ΓÇ║ 03-task-assignment.spec.ts:31:3 ΓÇ║ Task Assignment ΓÇ║ admin can create a new task from the tasks page (19.5s)
+  x  4 [chromium] ΓÇ║ 03-task-assignment.spec.ts:58:3 ΓÇ║ Task Assignment ΓÇ║ admin can assign a task to an intern via admin overview (12.1s)
+  x  5 [chromium] ΓÇ║ 03-task-assignment.spec.ts:79:3 ΓÇ║ Task Assignment ΓÇ║ admin can view alerts page (9.3s)
+
+
+  1) [chromium] ΓÇ║ 03-task-assignment.spec.ts:31:3 ΓÇ║ Task Assignment ΓÇ║ admin can create a new task from the tasks page 
+
+    Error: [31mTimed out 15000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mnot[2m.[22mtoBeVisible[2m()[22m
+
+    Locator: getByText(/create new task/i)
+    Expected: not visible
+    Received: visible
+    Call log:
+      [2m- expect.not.toBeVisible with timeout 15000ms[22m
+    [2m  - waiting for getByText(/create new task/i)[22m
+    [2m  -   locator resolved to <h2 class="font-display text-xl text-frost">Create New Task</h2>[22m
+    [2m  -   unexpected value "visible"[22m
+    [2m  -   locator resolved to <h2 class="font-display text-xl text-frost">Create New Task</h2>[22m
+    [2m  -   unexpected value "visible"[22m
+    [2m  -   locator resolved to <h2 class="font-display text-xl text-frost">Create New Task</h2>[22m
+    [2m  -   unexpected value "visible"[22m
+    [2m  -   locator resolved to <h2 class="font-display text-xl text-frost">Create New Task</h2>[22m
+    [2m  -   unexpected value "visible"[22m
+    [2m  -   locator resolved to <h2 class="font-display text-xl text-frost">Create New Task</h2>[22m
+    [2m  -   unexpected value "visible"[22m
+    [2m  -   locator resolved to <h2 class="font-display text-xl text-frost">Create New Task</h2>[22m
+    [2m  -   unexpected value "visible"[22m
+    [2m  -   locator resolved to <h2 class="font-display text-xl text-frost">Create New Task</h2>[22m
+    [2m  -   unexpected value "visible"[22m
+    [2m  -   locator resolved to <h2 class="font-display text-xl text-frost">Create New Task</h2>[22m
+    [2m  -   unexpected value "visible"[22m
+    [2m  -   locator resolved to <h2 class="font-display text-xl text-frost">Create New Task</h2>[22m
+    [2m  -   unexpected value "visible"[22m
+    [2m  -   locator resolved to <h2 class="font-display text-xl text-frost">Create New Task</h2>[22m
+    [2m  -   unexpected value "visible"[22m
+    [2m  -   locator resolved to <h2 class="font-display text-xl text-frost">Create New Task</h2>[22m
+    [2m  -   unexpected value "visible"[22m
+    [2m  -   locator resolved to <h2 class="font-display text-xl text-frost">Create New Task</h2>[22m
+    [2m  -   unexpected value "visible"[22m
+    [2m  -   locator resolved to <h2 class="font-display text-xl text-frost">Create New Task</h2>[22m
+    [2m  -   unexpected value "visible"[22m
+    [2m  -   locator resolved to <h2 class="font-display text-xl text-frost">Create New Task</h2>[22m
+    [2m  -   unexpected value "visible"[22m
+    [2m  -   locator resolved to <h2 class="font-display text-xl text-frost">Create New Task</h2>[22m
+    [2m  -   unexpected value "visible"[22m
+    [2m  -   locator resolved to <h2 class="font-display text-xl text-frost">Create New Task</h2>[22m
+    [2m  -   unexpected value "visible"[22m
+    [2m  -   locator resolved to <h2 class="font-display text-xl text-frost">Create New Task</h2>[22m
+    [2m  -   unexpected value "visible"[22m
+    [2m  -   locator resolved to <h2 class="font-display text-xl text-frost">Create New Task</h2>[22m
+    [2m  -   unexpected value "visible"[22m
+
+
+      52 |
+      53 |     // Modal should close after successful creation
+    > 54 |     await expect(page.getByText(/create new task/i)).not.toBeVisible({ timeout: 15_000 });
+         |                                                          ^
+      55 |     await expect(page.getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
+      56 |   });
+      57 |
+
+        at C:\Users\DELL\Downloads\New folder\PROJECTS\URIS\URIS\tests\e2e\specs\03-task-assignment.spec.ts:54:58
+
+    attachment #1: screenshot (image/png) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\03-task-assignment-Task-As-ff2b6-ew-task-from-the-tasks-page-chromium\test-failed-1.png
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    attachment #2: video (video/webm) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\03-task-assignment-Task-As-ff2b6-ew-task-from-the-tasks-page-chromium\video.webm
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+  2) [chromium] ΓÇ║ 03-task-assignment.spec.ts:58:3 ΓÇ║ Task Assignment ΓÇ║ admin can assign a task to an intern via admin overview 
+
+    TimeoutError: locator.selectOption: Timeout 10000ms exceeded.
+    Call log:
+      [2m- waiting for locator('select').filter({ hasText: /choose task/i })[22m
+    [2m  -   locator resolved to <select required="" class="uris-input">ΓÇª</select>[22m
+    [2m  - attempting select option action[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #1[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #2[22m
+    [2m  -   waiting 20ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #3[22m
+    [2m  -   waiting 100ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #4[22m
+    [2m  -   waiting 100ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #5[22m
+    [2m  -   waiting 500ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #6[22m
+    [2m  -   waiting 500ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #7[22m
+    [2m  -   waiting 500ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #8[22m
+    [2m  -   waiting 500ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #9[22m
+    [2m  -   waiting 500ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #10[22m
+    [2m  -   waiting 500ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #11[22m
+    [2m  -   waiting 500ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #12[22m
+    [2m  -   waiting 500ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #13[22m
+    [2m  -   waiting 500ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #14[22m
+    [2m  -   waiting 500ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #15[22m
+    [2m  -   waiting 500ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #16[22m
+    [2m  -   waiting 500ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #17[22m
+    [2m  -   waiting 500ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #18[22m
+    [2m  -   waiting 500ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #19[22m
+    [2m  -   waiting 500ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #20[22m
+    [2m  -   waiting 500ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #21[22m
+    [2m  -   waiting 500ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #22[22m
+    [2m  -   waiting 500ms[22m
+    [2m  -   waiting for element to be visible and enabled[22m
+    [2m  -   did not find some options[22m
+    [2m  - retrying select option action, attempt #23[22m
+    [2m  -   waiting 500ms[22m
+
+
+      68 |     const taskSelect = page.locator('select').filter({ hasText: /choose task/i });
+      69 |     await expect(taskSelect).toBeVisible({ timeout: 8_000 });
+    > 70 |     await taskSelect.selectOption({ index: 1 });
+         |                      ^
+      71 |
+      72 |     await page.getByRole('button', { name: /confirm assignment/i }).click();
+      73 |
+
+        at C:\Users\DELL\Downloads\New folder\PROJECTS\URIS\URIS\tests\e2e\specs\03-task-assignment.spec.ts:70:22
+
+    attachment #1: screenshot (image/png) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\03-task-assignment-Task-As-25dfe-n-intern-via-admin-overview-chromium\test-failed-1.png
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    attachment #2: video (video/webm) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\03-task-assignment-Task-As-25dfe-n-intern-via-admin-overview-chromium\video.webm
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+  3) [chromium] ΓÇ║ 03-task-assignment.spec.ts:79:3 ΓÇ║ Task Assignment ΓÇ║ admin can view alerts page ΓöÇΓöÇΓöÇ
+
+    Error: [31mTimed out 8000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m()[22m
+
+    Locator: getByText(/all active/i)
+    Expected: visible
+    Received: <element(s) not found>
+    Call log:
+      [2m- expect.toBeVisible with timeout 8000ms[22m
+    [2m  - waiting for getByText(/all active/i)[22m
+
+
+      80 |     await page.goto('/alerts');
+      81 |     await expect(page.getByText(/system alerts/i)).toBeVisible({ timeout: 10_000 });
+    > 82 |     await expect(page.getByText(/all active/i)).toBeVisible({ timeout: 8_000 });
+         |                                                 ^
+      83 |   });
+      84 | });
+      85 |
+
+        at C:\Users\DELL\Downloads\New folder\PROJECTS\URIS\URIS\tests\e2e\specs\03-task-assignment.spec.ts:82:49
+
+    attachment #1: screenshot (image/png) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\03-task-assignment-Task-As-da5ce--admin-can-view-alerts-page-chromium\test-failed-1.png
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    attachment #2: video (video/webm) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\03-task-assignment-Task-As-da5ce--admin-can-view-alerts-page-chromium\video.webm
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+  3 failed
+    [chromium] ΓÇ║ 03-task-assignment.spec.ts:31:3 ΓÇ║ Task Assignment ΓÇ║ admin can create a new task from the tasks page 
+    [chromium] ΓÇ║ 03-task-assignment.spec.ts:58:3 ΓÇ║ Task Assignment ΓÇ║ admin can assign a task to an intern via admin overview 
+    [chromium] ΓÇ║ 03-task-assignment.spec.ts:79:3 ΓÇ║ Task Assignment ΓÇ║ admin can view alerts page ΓöÇΓöÇΓöÇΓöÇ
+  2 passed (1.1m)
+
+To open last HTML report run:
+
+  npx playwright show-report
+

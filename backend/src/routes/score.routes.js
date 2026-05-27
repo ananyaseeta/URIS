@@ -19,6 +19,8 @@ const CAN_VIEW_SCORES = [
   ROLES.COLLABORATOR_LEAD,
 ];
 
-router.get('/history/:internId', verifyToken, requireRole(...CAN_VIEW_SCORES), validate(schemas.getScoreHistory), getScoreHistory);
+// Support both /history/:internId and /history?internId=X for admin filtering
+router.get('/history', verifyToken, requireRole(...CAN_VIEW_SCORES), getScoreHistory);
+router.get('/history/:internId', verifyToken, requireRole(...CAN_VIEW_SCORES), getScoreHistory);
 
 module.exports = router;

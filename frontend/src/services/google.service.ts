@@ -43,14 +43,22 @@ export async function getGoogleStatus(): Promise<GoogleStatus> {
 export async function connectGoogle(): Promise<void> {
   // Redirect to backend OAuth initiation — pass JWT as query param since
   // browser redirects cannot send Authorization headers
-  const token = localStorage.getItem('uris_auth')
   let jwt = ''
   try {
-    const parsed = JSON.parse(token ?? '{}')
-    jwt = parsed?.state?.token ?? ''
-  } catch { /* ignore */ }
-  const base = import.meta.env.VITE_API_URL ?? 'http://localhost:5000'
-  window.location.href = `${base}/auth/google${jwt ? `?token=${encodeURIComponent(jwt)}` : ''}`
+    // Zustand persist stores as { state: { token, user, isAuthenticated } }
+    const raw = localStorage.getItem('uris_auth')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      jwt = parsed?.state?.token ?? parsed?.token ?? ''
+    }
+  } catch { /* ignore parse errors */ }
+
+  const base = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:5000'
+  // Strip /api suffix if present — the OAuth route is at the root
+  const backendBase = base.replace(/\/api\/?$/, '')
+  window.location.href = jwt
+    ? `${backendBase}/auth/google?token=${encodeURIComponent(jwt)}`
+    : `${backendBase}/auth/google`
 }
 
 export async function disconnectGoogle(): Promise<void> {

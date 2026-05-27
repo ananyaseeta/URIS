@@ -1,0 +1,8 @@
+-- Add portfolio fields to Intern table
+ALTER TABLE "Intern" ADD COLUMN IF NOT EXISTS "bio" TEXT;
+ALTER TABLE "Intern" ADD COLUMN IF NOT EXISTS "profilePic" TEXT;
+ALTER TABLE "Intern" ADD COLUMN IF NOT EXISTS "contactNumber" TEXT;
+ALTER TABLE "Intern" ADD COLUMN IF NOT EXISTS "linkedinUrl" TEXT;
+ALTER TABLE "Intern" ADD COLUMN IF NOT EXISTS "skills" TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE "Intern" ADD COLUMN IF NOT EXISTS "slug" TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS "Intern_slug_key" ON "Intern"("slug");

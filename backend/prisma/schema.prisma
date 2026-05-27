@@ -61,6 +61,13 @@ model Intern {
   gdocIsStale            Boolean            @default(false)
   gdocLastModified       DateTime?
   gdocMetaRefreshedAt    DateTime?
+  // Portfolio fields
+  bio                    String?
+  profilePic             String?
+  contactNumber          String?
+  linkedinUrl            String?
+  skills                 String[]           @default([])
+  slug                   String?            @unique
   availabilitySlots      AvailabilitySlot[]
   capacityScore          CapacityScore?
   credibility            CredibilityScore?

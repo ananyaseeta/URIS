@@ -36,6 +36,7 @@ export default function ChatFindPage() {
   const [groupName, setGroupName] = useState('')
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
   const [error, setError] = useState('')
+  const [initialized, setInitialized] = useState(false)
 
   useEffect(() => {
     if (!token) {
@@ -53,14 +54,15 @@ export default function ChatFindPage() {
         api.get('/chat/friends').catch(() => ({ data: [] })),
         api.get('/chat/friend-requests').catch(() => ({ data: [] }))
       ])
-      setUsers(usersRes.data || [])
-      setFriends(friendsRes.data || [])
-      setRequests(requestsRes.data || [])
+      setUsers(Array.isArray(usersRes.data) ? usersRes.data : [])
+      setFriends(Array.isArray(friendsRes.data) ? friendsRes.data : [])
+      setRequests(Array.isArray(requestsRes.data) ? requestsRes.data : [])
     } catch (err) {
       setError('Failed to load users')
       console.error(err)
     } finally {
       setLoading(false)
+      setInitialized(true)
     }
   }
 
@@ -69,20 +71,22 @@ export default function ChatFindPage() {
     try {
       setSearching(true)
       const res = await api.get(`/chat/users${q ? `?q=${encodeURIComponent(q)}` : ''}`)
-      setUsers(res.data || [])
+      setUsers(Array.isArray(res.data) ? res.data : [])
     } catch (err) {
       console.error(err)
+      // don't crash — just keep existing list
     } finally {
       setSearching(false)
     }
   }, [])
 
   useEffect(() => {
+    if (!initialized) return  // don't fire until initial load is done
     const timer = setTimeout(() => {
       searchUsers(searchTerm)
     }, 300)
     return () => clearTimeout(timer)
-  }, [searchTerm, searchUsers])
+  }, [searchTerm, searchUsers, initialized])
 
   const handleSendFriendRequest = async (userId: string) => {
     try {

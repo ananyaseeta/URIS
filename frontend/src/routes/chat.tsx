@@ -51,8 +51,8 @@ export default function ChatPage() {
         api.get('/chat/chats').catch(() => ({ data: [] })),
         api.get('/chat/friends').catch(() => ({ data: [] }))
       ])
-      setChats(chatsRes.data || [])
-      setFriends(friendsRes.data || [])
+      setChats(Array.isArray(chatsRes.data) ? chatsRes.data : [])
+      setFriends(Array.isArray(friendsRes.data) ? friendsRes.data : [])
     } catch (err) {
       setError('Failed to load chats')
       console.error(err)

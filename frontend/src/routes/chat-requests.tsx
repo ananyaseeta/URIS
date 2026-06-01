@@ -43,8 +43,8 @@ export default function ChatRequestsPage() {
   const loadRequests = async () => {
     try {
       setLoading(true)
-      const res = await api.get('/chat/friend-requests')
-      setRequests(res.data || [])
+      const res = await api.get('/chat/friend-requests').catch(() => ({ data: [] }))
+      setRequests(Array.isArray(res.data) ? res.data : [])
     } catch (err) {
       setError('Failed to load friend requests')
       console.error(err)

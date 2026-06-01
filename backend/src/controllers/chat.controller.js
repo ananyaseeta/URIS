@@ -3,6 +3,46 @@ const { ok, notFound, forbidden, validationError } = require('../utils/respond')
 const logger = require('../utils/logger');
 
 /**
+ * GET /chat/users
+ * Search all users for chat discovery — available to any authenticated user
+ */
+async function getUsers(req, res, next) {
+  try {
+    const { q } = req.query;
+
+    const where = q
+      ? {
+          id: { not: req.user.id },
+          status: 'active',
+          OR: [
+            { name:  { contains: q, mode: 'insensitive' } },
+            { email: { contains: q, mode: 'insensitive' } },
+          ],
+        }
+      : {
+          id: { not: req.user.id },
+          status: 'active',
+        };
+
+    const users = await prisma.user.findMany({
+      where,
+      select: {
+        id:    true,
+        name:  true,
+        email: true,
+        role:  true,
+      },
+      orderBy: { name: 'asc' },
+      take: 50,
+    });
+
+    return ok(res, users, 'Users retrieved');
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
  * GET /chat/friend-requests
  * Get incoming friend requests for the authenticated user
  */
@@ -526,6 +566,7 @@ async function sendMessage(req, res, next) {
 }
 
 module.exports = {
+  getUsers,
   getFriendRequests,
   sendFriendRequest,
   acceptFriendRequest,

@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const {
+  getUsers,
   getFriendRequests,
   sendFriendRequest,
   acceptFriendRequest,
@@ -15,6 +16,9 @@ const {
 const { verifyToken } = require('../middleware/auth.middleware');
 const { validate }    = require('../middleware/validate.middleware');
 const { schemas }     = require('../validation/schemas');
+
+// User discovery
+router.get('/users', verifyToken, getUsers);
 
 // Friend requests
 router.get('/friend-requests', verifyToken, getFriendRequests);

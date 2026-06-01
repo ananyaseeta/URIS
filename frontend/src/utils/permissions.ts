@@ -14,7 +14,7 @@ export const ROLE_PERMISSIONS: Record<string, Permissions> = {
     canSeeNotes: true,
     canAssign: 'YES',
     canReview: 'YES',
-    modules: ['/dashboard', '/tasks', '/review', '/team', '/alerts', '/admin', '/intelligence', '/governance', '/audit-logs', '/integrations', '/profile', '/settings']
+    modules: ['/dashboard', '/tasks', '/review', '/team', '/alerts', '/admin', '/intelligence', '/governance', '/audit-logs', '/integrations', '/chat', '/profile', '/settings']
   },
   'operations_lead': {
     canSeeAllTasks: 'LIMITED',
@@ -22,7 +22,7 @@ export const ROLE_PERMISSIONS: Record<string, Permissions> = {
     canSeeNotes: false,
     canAssign: 'YES',
     canReview: 'NO',
-    modules: ['/dashboard', '/tasks', '/team', '/alerts', '/intelligence', '/profile', '/settings']
+    modules: ['/dashboard', '/tasks', '/team', '/alerts', '/intelligence', '/chat', '/profile', '/settings']
   },
   'technical_lead': {
     canSeeAllTasks: 'OWN_TEAM',
@@ -30,7 +30,7 @@ export const ROLE_PERMISSIONS: Record<string, Permissions> = {
     canSeeNotes: true,
     canAssign: 'YES',
     canReview: 'YES',
-    modules: ['/dashboard', '/tasks', '/review', '/team', '/alerts', '/intelligence', '/profile', '/settings']
+    modules: ['/dashboard', '/tasks', '/review', '/team', '/alerts', '/intelligence', '/chat', '/profile', '/settings']
   },
   'research_lead': {
     canSeeAllTasks: 'OWN_TEAM',
@@ -38,7 +38,7 @@ export const ROLE_PERMISSIONS: Record<string, Permissions> = {
     canSeeNotes: true,
     canAssign: 'YES',
     canReview: 'YES',
-    modules: ['/dashboard', '/tasks', '/review', '/team', '/alerts', '/intelligence', '/profile', '/settings']
+    modules: ['/dashboard', '/tasks', '/review', '/team', '/alerts', '/intelligence', '/chat', '/profile', '/settings']
   },
   'operations_program_manager': {
     canSeeAllTasks: 'OPERATIONAL',
@@ -46,7 +46,7 @@ export const ROLE_PERMISSIONS: Record<string, Permissions> = {
     canSeeNotes: false,
     canAssign: 'YES',
     canReview: 'LIMITED',
-    modules: ['/dashboard', '/tasks', '/review', '/team', '/alerts', '/intelligence', '/profile', '/settings']
+    modules: ['/dashboard', '/tasks', '/review', '/team', '/alerts', '/intelligence', '/chat', '/profile', '/settings']
   },
   'technical_intern': {
     canSeeAllTasks: 'NO',
@@ -86,7 +86,7 @@ export const ROLE_PERMISSIONS: Record<string, Permissions> = {
     canSeeNotes: true,
     canAssign: 'NO',
     canReview: 'NO',
-    modules: ['/dashboard', '/tasks', '/team', '/alerts', '/profile', '/settings']
+    modules: ['/dashboard', '/tasks', '/team', '/alerts', '/chat', '/profile', '/settings']
   },
   'collaborator_lead': {
     canSeeAllTasks: 'COLLAB',
@@ -94,7 +94,7 @@ export const ROLE_PERMISSIONS: Record<string, Permissions> = {
     canSeeNotes: true,
     canAssign: 'LIMITED',
     canReview: 'YES',
-    modules: ['/dashboard', '/tasks', '/review', '/team', '/alerts', '/profile', '/settings']
+    modules: ['/dashboard', '/tasks', '/review', '/team', '/alerts', '/chat', '/profile', '/settings']
   }
 };
 

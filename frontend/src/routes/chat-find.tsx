@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore, selectToken, selectUser } from '../store/authStore'
 import Sidebar from '../components/Sidebar'
@@ -30,6 +30,7 @@ export default function ChatFindPage() {
   const [friends, setFriends] = useState<UserData[]>([])
   const [requests, setRequests] = useState<FriendRequest[]>([])
   const [loading, setLoading] = useState(true)
+  const [searching, setSearching] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [isGroupMode, setIsGroupMode] = useState(false)
   const [groupName, setGroupName] = useState('')
@@ -48,7 +49,7 @@ export default function ChatFindPage() {
     try {
       setLoading(true)
       const [usersRes, friendsRes, requestsRes] = await Promise.all([
-        api.get('/admin/users').catch(() => ({ data: [] })),
+        api.get('/chat/users').catch(() => ({ data: [] })),
         api.get('/chat/friends').catch(() => ({ data: [] })),
         api.get('/chat/friend-requests').catch(() => ({ data: [] }))
       ])
@@ -62,6 +63,26 @@ export default function ChatFindPage() {
       setLoading(false)
     }
   }
+
+  // Debounced live search against backend
+  const searchUsers = useCallback(async (q: string) => {
+    try {
+      setSearching(true)
+      const res = await api.get(`/chat/users${q ? `?q=${encodeURIComponent(q)}` : ''}`)
+      setUsers(res.data || [])
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setSearching(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      searchUsers(searchTerm)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchTerm, searchUsers])
 
   const handleSendFriendRequest = async (userId: string) => {
     try {
@@ -99,13 +120,7 @@ export default function ChatFindPage() {
     )
   }
 
-  const filteredUsers = users.filter(u => {
-    if (!searchTerm) return true
-    return (
-      u.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      u.email?.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-  })
+  const filteredUsers = users
 
   const isFriend = (userId: string) => {
     return friends.some(f => f.id === userId)
@@ -149,6 +164,9 @@ export default function ChatFindPage() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="uris-input pl-10 w-full"
                   />
+                  {searching && (
+                    <span className="absolute right-3 top-3 text-[0.5rem] text-gold/50 animate-pulse">SEARCHING...</span>
+                  )}
                 </div>
 
                 <div className="space-y-2">

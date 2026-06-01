@@ -70,6 +70,7 @@ let _reassignmentIntelligenceTask = null;
 let _integrationIntelligenceTask = null;
 let _opSyncTask = null;
 let _opIntelligenceTask = null;
+let _dbKeepAliveTask  = null;  // prevents Neon free-tier from suspending
 
 
 // note: reassignment intelligence is implemented as a recommendation-only job
@@ -192,6 +193,7 @@ function start() {
   _startIntegrationIntelligenceJob();
   _startOPSyncJob();
   _startOPIntelligenceJob();
+  _startDbKeepAliveJob();
 }
 
 function _startIntegrationIntelligenceJob() {
@@ -244,6 +246,7 @@ function stop() {
   if (_staleTaskAutomationTask) { _staleTaskAutomationTask.stop(); _staleTaskAutomationTask = null; }
   if (_opSyncTask)        { _opSyncTask.stop();        _opSyncTask        = null; }
   if (_opIntelligenceTask){ _opIntelligenceTask.stop(); _opIntelligenceTask = null; }
+  if (_dbKeepAliveTask)  { _dbKeepAliveTask.stop();  _dbKeepAliveTask  = null; }
   logger.info('All scheduled jobs stopped');
 }
 
@@ -534,6 +537,30 @@ function _startOPIntelligenceJob() {
     }
     logger.info({ runId }, 'OpenProject intelligence job finished');
   });
+}
+
+// ── Neon DB keep-alive ────────────────────────────────────────────────────────
+// Neon free tier suspends the compute after 5 min of inactivity.
+// This job runs a cheap COUNT query every 4 min to keep the connection alive,
+// preventing cold-start delays for real users and flaky E2E tests.
+// Skipped in test environment (tests manage their own DB lifecycle).
+function _startDbKeepAliveJob() {
+  if (process.env.NODE_ENV === 'test') return;
+
+  // Every 4 minutes — safely under Neon's 5-min suspend threshold
+  _dbKeepAliveTask = cron.schedule('*/4 * * * *', async () => {
+    try {
+      // Reuse the shared Prisma instance (src/utils/prisma.js)
+      const prisma = require('../utils/prisma');
+      await prisma.$queryRaw`SELECT 1`;
+      logger.debug('DB keep-alive ping OK');
+    } catch (err) {
+      // Non-fatal — just log at warn level so it's visible but doesn't alarm
+      logger.warn({ err: err.message }, 'DB keep-alive ping failed (Neon may be waking up)');
+    }
+  });
+
+  logger.info('DB keep-alive job started (every 4 min — prevents Neon suspension)');
 }
 
 module.exports = { start, stop };

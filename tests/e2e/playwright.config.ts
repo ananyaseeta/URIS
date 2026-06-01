@@ -16,6 +16,8 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './specs',
   testIgnore: ['**/node_modules/**', '**/backend/**', '**/frontend/**'],
+  globalSetup: './global-setup.ts',
+  globalTeardown: './global-teardown.ts',
   fullyParallel: false,   // journeys share DB state — run sequentially
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
@@ -50,9 +52,10 @@ export default defineConfig({
       cwd: '../../backend',
       port: 5000,
       reuseExistingServer: true,
-      timeout: 30_000,
+      timeout: 60_000,          // give backend time to connect to Neon on cold start
+      url: 'http://localhost:5000/health/ready',  // wait until DB is reachable too
       env: {
-        // Raise rate limits so 25 tests logging in don't hit the ceiling
+        // Raise rate limits so tests logging in don't hit the ceiling
         RATE_LIMIT_LOGIN_MAX:    '500',
         RATE_LIMIT_REGISTER_MAX: '100',
       },

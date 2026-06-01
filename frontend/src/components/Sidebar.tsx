@@ -138,15 +138,27 @@ export default function Sidebar() {
         {mobileOpen && (
           <motion.aside key="mobile-drawer" initial={{ x: -220 }} animate={{ x: 0 }} exit={{ x: -220 }}
             transition={{ type: 'tween', duration: 0.25 }}
-            className="fixed left-0 top-0 bottom-0 z-50 w-[200px] md:hidden flex flex-col justify-between py-5"
+            className="fixed left-0 top-0 bottom-0 z-50 w-[200px] md:hidden flex flex-col py-5"
             style={{ background: 'rgba(7,8,15,0.97)', borderRight: '1px solid rgba(201,168,76,0.09)', backdropFilter: 'blur(16px)' }}>
-            <div>
-              <div className="px-5 mb-3 mt-10">
+            {/* Scrollable nav area */}
+            <div className="flex flex-col flex-1 min-h-0">
+              <div className="px-5 mb-3 mt-10 flex-shrink-0">
                 <p className="nav-label text-[0.5rem]" style={{ color: 'rgba(201,168,76,0.32)', letterSpacing: '0.45em' }}>NAVIGATION</p>
               </div>
-              {navItems}
+              <div
+                className="flex-1 overflow-y-auto min-h-0 pr-0.5"
+                style={{
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: 'rgba(201,168,76,0.2) transparent',
+                }}
+              >
+                {navItems}
+              </div>
             </div>
-            {bottomSection}
+            {/* Bottom section always visible */}
+            <div className="flex-shrink-0 mt-2">
+              {bottomSection}
+            </div>
           </motion.aside>
         )}
       </AnimatePresence>
@@ -156,7 +168,7 @@ export default function Sidebar() {
         initial={{ x: -56, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={{ duration: 0.45, delay: 0.15 }}
-        className="fixed left-0 top-[49px] bottom-0 z-40 hidden md:flex flex-col justify-between py-5"
+        className="fixed left-0 top-[49px] bottom-0 z-40 hidden md:flex flex-col py-5"
         style={{
           width: desktopOpen ? '200px' : '0px',
           overflow: desktopOpen ? 'visible' : 'hidden',
@@ -166,13 +178,25 @@ export default function Sidebar() {
           transition: 'width 0.25s ease'
         }}
       >
-        <div>
-          <div className="px-5 mb-3 flex items-center justify-between">
+        {/* Scrollable nav area */}
+        <div className="flex flex-col flex-1 min-h-0">
+          <div className="px-5 mb-3 flex items-center justify-between flex-shrink-0">
             <p className="nav-label text-[0.5rem]" style={{ color: 'rgba(201,168,76,0.32)', letterSpacing: '0.45em' }}>NAVIGATION</p>
           </div>
-          {navItems}
+          <div
+            className="flex-1 overflow-y-auto min-h-0 pr-0.5"
+            style={{
+              scrollbarWidth: 'thin',
+              scrollbarColor: 'rgba(201,168,76,0.2) transparent',
+            }}
+          >
+            {navItems}
+          </div>
         </div>
-        {bottomSection}
+        {/* Bottom section always visible */}
+        <div className="flex-shrink-0 mt-2">
+          {bottomSection}
+        </div>
       </motion.aside>
 
       {/* Desktop toggle button */}

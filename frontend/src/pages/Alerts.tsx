@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AlertTriangle, AlertOctagon, Bell, Clock, Check, Loader2, Flag, Star, ClipboardList, Pause, ShieldAlert, Wifi, WifiOff } from 'lucide-react'
 import Sidebar   from '../components/Sidebar'
@@ -9,25 +9,29 @@ import { useRealtimeStore } from '../store/realtimeStore'
 // ── Type meta ─────────────────────────────────────────────────────────────────
 
 const TYPE_META: Record<string, { Icon: React.ElementType; label: string; color: string }> = {
-  blocker:              { Icon: AlertOctagon,  label: 'BLOCKER',          color: '#f87171' },
-  blocker_escalation:   { Icon: AlertOctagon,  label: 'BLOCKER ESC.',     color: '#f87171' },
-  blocker_reported:     { Icon: Flag,          label: 'BLOCKER',          color: '#f87171' },
-  task_paused:          { Icon: Pause,         label: 'TASK PAUSED',      color: '#f59e0b' },
-  task_assigned:        { Icon: ClipboardList, label: 'TASK ASSIGNED',    color: '#c9a84c' },
-  review_submitted:     { Icon: Star,          label: 'REVIEW',           color: '#4ade80' },
-  stale:                { Icon: Clock,         label: 'STALE TASK',       color: '#f59e0b' },
-  stale_task:           { Icon: Clock,         label: 'STALE TASK',       color: '#f59e0b' },
-  deadline_approaching: { Icon: Clock,         label: 'DEADLINE',         color: '#f87171' },
-  availability_reminder:{ Icon: Bell,          label: 'AVAILABILITY',     color: '#c9a84c' },
-  credibility:          { Icon: AlertTriangle, label: 'CREDIBILITY',      color: '#f87171' },
-  availability:         { Icon: Bell,          label: 'AVAILABILITY',     color: '#f59e0b' },
-  capacity:             { Icon: AlertTriangle, label: 'CAPACITY',         color: '#f59e0b' },
-  low_capacity:         { Icon: AlertTriangle, label: 'LOW CAPACITY',     color: '#f59e0b' },
-  overload:             { Icon: ShieldAlert,   label: 'OVERLOAD',         color: '#f87171' },
-  overreliance:         { Icon: Bell,          label: 'OVER-RELIANCE',    color: '#b8d4f0' },
-  reassignment:         { Icon: AlertTriangle, label: 'REASSIGNMENT',     color: '#f59e0b' },
-  low_performance:      { Icon: AlertTriangle, label: 'LOW PERFORMANCE',  color: '#f87171' },
-  spike:                { Icon: Bell,          label: 'SCORE SPIKE',      color: '#f59e0b' },
+  blocker:                      { Icon: AlertOctagon,  label: 'BLOCKER',               color: '#f87171' },
+  blocker_escalation:           { Icon: AlertOctagon,  label: 'BLOCKER ESC.',           color: '#f87171' },
+  blocker_reported:             { Icon: Flag,          label: 'BLOCKER',               color: '#f87171' },
+  task_paused:                  { Icon: Pause,         label: 'TASK PAUSED',           color: '#f59e0b' },
+  task_assigned:                { Icon: ClipboardList, label: 'TASK ASSIGNED',         color: '#c9a84c' },
+  review_submitted:             { Icon: Star,          label: 'REVIEW',                color: '#4ade80' },
+  stale:                        { Icon: Clock,         label: 'STALE TASK',            color: '#f59e0b' },
+  stale_task:                   { Icon: Clock,         label: 'STALE TASK',            color: '#f59e0b' },
+  deadline_approaching:         { Icon: Clock,         label: 'DEADLINE',              color: '#f87171' },
+  availability_reminder:        { Icon: Bell,          label: 'AVAILABILITY',          color: '#c9a84c' },
+  credibility:                  { Icon: AlertTriangle, label: 'CREDIBILITY',           color: '#f87171' },
+  availability:                 { Icon: Bell,          label: 'AVAILABILITY',          color: '#f59e0b' },
+  capacity:                     { Icon: AlertTriangle, label: 'CAPACITY',              color: '#f59e0b' },
+  low_capacity:                 { Icon: AlertTriangle, label: 'LOW CAPACITY',          color: '#f59e0b' },
+  overload:                     { Icon: ShieldAlert,   label: 'OVERLOAD',              color: '#f87171' },
+  overreliance:                 { Icon: Bell,          label: 'OVER-RELIANCE',         color: '#b8d4f0' },
+  reassignment:                 { Icon: AlertTriangle, label: 'REASSIGNMENT',          color: '#f59e0b' },
+  low_performance:              { Icon: AlertTriangle, label: 'LOW PERFORMANCE',       color: '#f87171' },
+  spike:                        { Icon: Bell,          label: 'SCORE SPIKE',           color: '#f59e0b' },
+  form_reminder:                { Icon: ClipboardList, label: 'FORM REMINDER',         color: '#c9a84c' },
+  integration_inactivity:       { Icon: AlertTriangle, label: 'INTEGRATION INACTIVITY',color: '#f87171' },
+  integration_delivery_risk:    { Icon: AlertTriangle, label: 'DELIVERY RISK',         color: '#f59e0b' },
+  integration_collaboration_risk:{ Icon: Bell,         label: 'COLLAB RISK',           color: '#f59e0b' },
 }
 
 function getMeta(type: string) {
@@ -43,18 +47,54 @@ function timeAgo(iso?: string): string {
   return `${Math.floor(h / 24)}d ago`
 }
 
+/**
+ * Renders a message string — any https:// URL is turned into a gold clickable link.
+ * Everything else is plain text.
+ */
+function MessageWithLinks({ text }: { text: string }) {
+  // Split on URLs (greedy — captures everything up to whitespace)
+  const parts = text.split(/(https?:\/\/[^\s]+)/g)
+  return (
+    <p className="font-body text-sm text-frost/80 leading-snug break-words">
+      {parts.map((part, i) =>
+        part.match(/^https?:\/\//) ? (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 transition-colors hover:opacity-80"
+            style={{ color: '#c9a84c' }}
+            onClick={e => e.stopPropagation()}
+          >
+            Open Form ↗
+          </a>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </p>
+  )
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Alerts() {
   const { alerts, resolvedAlerts, loading, unread, resolve, resolveAll, refresh } = useAlertStore()
   const { status: socketStatus, counters } = useRealtimeStore()
   const isLive = socketStatus === 'connected'
-  const [filter, setFilter]       = useState<'all' | 'critical' | 'warning'>('all')
+  const [filter, setFilter]           = useState<'all' | 'critical' | 'warning'>('all')
   const [resolvingIds, setResolvingIds] = useState<Set<string>>(new Set())
-  const [clearing, setClearing]   = useState(false)
+  const [clearing, setClearing]        = useState(false)
 
-  // Refresh on mount so the page is always fresh
-  useEffect(() => { void refresh() }, [refresh])
+  // Refresh once on mount only — socket updates come via the store automatically.
+  // Do NOT add `refresh` to deps or it creates an infinite loop.
+  const didMount = useRef(false)
+  useEffect(() => {
+    if (didMount.current) return
+    didMount.current = true
+    void refresh()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleResolve = async (id: string) => {
     setResolvingIds(prev => new Set(prev).add(id))
@@ -109,6 +149,7 @@ export default function Alerts() {
                   </>
                 )}
               </div>
+
               {/* Live socket indicator */}
               <div className="flex items-center gap-1.5 px-2 py-1 rounded-sm"
                 style={{ background: isLive ? 'rgba(74,222,128,0.08)' : 'rgba(184,212,240,0.04)', border: `1px solid ${isLive ? 'rgba(74,222,128,0.2)' : 'rgba(184,212,240,0.08)'}` }}>
@@ -117,17 +158,18 @@ export default function Alerts() {
                   : <><WifiOff size={9} style={{ color: 'rgba(184,212,240,0.25)' }} /><span className="nav-label text-[0.48rem]" style={{ color: 'rgba(184,212,240,0.25)' }}>OFFLINE</span></>
                 }
               </div>
-              {/* Live critical counter from socket */}
-              {isLive && counters.criticalAlerts > 0 && (
+
+              {/* Critical counter — only show when > 0 */}
+              {counters.criticalAlerts > 0 && (
                 <div className="flex items-center gap-1.5 px-2 py-1 rounded-sm"
                   style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.2)' }}>
-                  <motion.span animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 0.8, repeat: Infinity }}
-                    className="w-1 h-1 rounded-full bg-red-400" />
+                  <span className="w-1 h-1 rounded-full bg-red-400" />
                   <span className="nav-label text-[0.48rem]" style={{ color: '#f87171' }}>
                     {counters.criticalAlerts} CRITICAL
                   </span>
                 </div>
               )}
+
               {alerts.length > 0 && (
                 <motion.button whileTap={{ scale: 0.96 }} onClick={handleClearAll} disabled={clearing}
                   className="nav-label text-[0.6rem] px-3 py-1.5 rounded-sm transition-all disabled:opacity-40"
@@ -169,9 +211,9 @@ export default function Alerts() {
                 </div>
               )}
 
-              {/* Alert list */}
+              {/* Alert list — no staggered delay to prevent glitch on re-render */}
               <div className="space-y-3">
-                <AnimatePresence mode="popLayout">
+                <AnimatePresence mode="sync">
                   {filtered.length === 0 ? (
                     <motion.div key="empty"
                       initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
@@ -195,7 +237,7 @@ export default function Alerts() {
                         {filter !== 'all' ? `No ${filter} alerts` : 'No active alerts'}
                       </p>
                     </motion.div>
-                  ) : filtered.map((alert, i) => {
+                  ) : filtered.map(alert => {
                     const meta        = getMeta(alert.type)
                     const c           = alert.severity === 'critical' ? '#f87171' : meta.color
                     const Icon        = meta.Icon
@@ -203,31 +245,29 @@ export default function Alerts() {
 
                     return (
                       <motion.div key={alert.id}
-                        layout
-                        initial={{ opacity: 0, x: -12, scale: 0.98 }}
-                        animate={{ opacity: 1, x: 0,   scale: 1    }}
-                        exit={{   opacity: 0, x: 20,   scale: 0.96, transition: { duration: 0.2 } }}
-                        transition={{ delay: i * 0.04 }}
+                        layout="position"
+                        initial={{ opacity: 0, x: -8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{   opacity: 0, x: 16, transition: { duration: 0.15 } }}
+                        transition={{ duration: 0.2 }}
                         className="glass-card rounded-sm p-4 sm:p-5"
                         style={{ borderColor: `${c}25` }}>
                         <div className="flex items-start gap-3 sm:gap-4">
 
-                          {/* Icon with signal rings for critical */}
+                          {/* Icon — only critical gets the pulse rings */}
                           <div className="relative flex-shrink-0 w-9 h-9 sm:w-10 sm:h-10 mt-0.5">
                             <div className="w-full h-full rounded-sm flex items-center justify-center"
                               style={{ background: `${c}12`, border: `1px solid ${c}30` }}>
                               <Icon size={14} style={{ color: c }} />
                             </div>
                             {alert.severity === 'critical' && (
-                              <>
-                                {[0, 0.6].map(d => (
-                                  <motion.div key={d} className="absolute inset-0 rounded-sm pointer-events-none"
-                                    style={{ border: `1px solid ${c}` }}
-                                    initial={{ opacity: 0.7, scale: 1 }}
-                                    animate={{ opacity: 0,   scale: 2 }}
-                                    transition={{ duration: 1.6, delay: d, repeat: Infinity, ease: 'easeOut' }} />
-                                ))}
-                              </>
+                              [0, 0.6].map(d => (
+                                <motion.div key={d} className="absolute inset-0 rounded-sm pointer-events-none"
+                                  style={{ border: `1px solid ${c}` }}
+                                  initial={{ opacity: 0.7, scale: 1 }}
+                                  animate={{ opacity: 0,   scale: 2 }}
+                                  transition={{ duration: 1.6, delay: d, repeat: Infinity, ease: 'easeOut' }} />
+                              ))
                             )}
                           </div>
 
@@ -239,7 +279,7 @@ export default function Alerts() {
                                 {meta.label}
                               </span>
                               {alert.severity === 'critical' && (
-                                <span className="nav-label text-[0.46rem] px-1.5 py-0.5 rounded-sm animate-pulse"
+                                <span className="nav-label text-[0.46rem] px-1.5 py-0.5 rounded-sm"
                                   style={{ background: 'rgba(248,113,113,0.12)', color: '#f87171', border: '1px solid rgba(248,113,113,0.25)' }}>
                                   CRITICAL
                                 </span>
@@ -248,7 +288,8 @@ export default function Alerts() {
                                 {timeAgo(alert.createdAt)}
                               </span>
                             </div>
-                            <p className="font-body text-sm text-frost/80 leading-snug">{alert.message}</p>
+                            {/* URLs in form reminders become gold clickable links */}
+                            <MessageWithLinks text={alert.message} />
                           </div>
 
                           {/* Resolve button */}
@@ -291,7 +332,7 @@ export default function Alerts() {
                       style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
                       <Icon size={12} className="flex-shrink-0 mt-0.5 text-ice/30" />
                       <div className="flex-1 min-w-0">
-                        <p className="font-body text-xs text-ice/50 leading-snug">{alert.message}</p>
+                        <MessageWithLinks text={alert.message} />
                         <p className="nav-label text-[0.44rem] text-ice/20 mt-0.5">{timeAgo(alert.createdAt)}</p>
                       </div>
                       <span className="nav-label text-[0.44rem] text-green-400/50 flex-shrink-0">✓ RESOLVED</span>

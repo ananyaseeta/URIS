@@ -59,12 +59,19 @@ async function generateReassignmentAlerts(internId, finalCapacity) {
   });
   if (existing) return;
 
+  // Fetch intern name for a human-readable message
+  const intern = await prisma.intern.findUnique({
+    where: { id: internId },
+    include: { user: { select: { name: true, email: true } } },
+  });
+  const internName = intern?.user?.name || intern?.user?.email?.split('@')[0] || internId;
+
   await prisma.alert.create({
     data: {
       internId,
       type:     'reassignment',
       severity: 'warning',
-      message:  `Intern ${internId} has a final capacity score of ${Math.round(finalCapacity * 100)}. Consider reassigning active tasks.`,
+      message:  `${internName} has a final capacity score of ${Math.round(finalCapacity * 100)}. Consider reassigning active tasks.`,
     },
   });
 }

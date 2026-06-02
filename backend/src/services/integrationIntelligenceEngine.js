@@ -449,32 +449,35 @@ async function detectOperationalRisk({ integrationIntelligenceRows, now = new Da
     if (inactivityDays != null && inactivityDays >= thresholdInactivityDays) patterns.push('gdoc_inactivity');
     if (isStale) patterns.push('gdoc_stale');
 
+    // Resolve human-readable name — never use a raw UUID in alert messages
+    const displayName = (row.internName && !row.internName.match(/^[0-9a-f-]{36}$/i))
+      ? row.internName
+      : await (async () => {
+          try {
+            const intern = await prisma.intern.findUnique({
+              where: { id: row.internId },
+              include: { user: { select: { name: true, email: true } } },
+            });
+            return intern?.user?.name || intern?.user?.email?.split('@')[0] || 'Unknown Intern';
+          } catch { return 'Unknown Intern'; }
+        })();
+
+    // Dedup window: 24 hours (was 6h, which caused 4 duplicate alerts per intern per day)
+    const DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
+
     // Determine alerts based on implemented document activity score.
     if (row.documentActivityScore < 35) {
       const type = 'integration_inactivity';
       const severity = 'high';
 
-      // idempotency: do not create duplicates in last 6 hours per intern/type
-      const recentSince = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+      const recentSince = new Date(now.getTime() - DEDUP_WINDOW_MS);
       const existing = await prismaAlert.findFirst({
-        where: {
-          internId: row.internId,
-          type,
-          resolved: false,
-          createdAt: { gte: recentSince },
-        },
+        where: { internId: row.internId, type, resolved: false, createdAt: { gte: recentSince } },
       });
 
       if (!existing) {
-        const message = `INTEGRATION RISK: Google Docs inactivity detected for ${row.internName ?? row.internId}. DocumentActivityScore=${row.documentActivityScore}. ${inactivityDays != null ? `InactivityDays=${inactivityDays}.` : 'No Google Doc connected.'}`;
-        await prismaAlert.create({
-          data: {
-            internId: row.internId,
-            type,
-            severity,
-            message,
-          },
-        });
+        const message = `Google Docs inactivity detected for ${displayName}. ${inactivityDays != null ? `No updates in ${inactivityDays} day${inactivityDays !== 1 ? 's' : ''}.` : 'No Google Doc connected.'}`;
+        await prismaAlert.create({ data: { internId: row.internId, type, severity, message } });
         createdAlerts.push({ internId: row.internId, type, severity });
       }
     }
@@ -483,51 +486,40 @@ async function detectOperationalRisk({ integrationIntelligenceRows, now = new Da
       const type = 'integration_delivery_risk';
       const severity = 'warning';
 
-      const recentSince = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+      const recentSince = new Date(now.getTime() - DEDUP_WINDOW_MS);
       const existing = await prismaAlert.findFirst({
-        where: {
-          internId: row.internId,
-          type,
-          resolved: false,
-          createdAt: { gte: recentSince },
-        },
+        where: { internId: row.internId, type, resolved: false, createdAt: { gte: recentSince } },
       });
 
       if (!existing) {
-        const message = `DELIVERY RISK (Docs): Missing/low progress updates inferred from Google Docs cadence for ${row.internName ?? row.internId}. DocumentActivityScore=${row.documentActivityScore}.`;
+        const message = `Low progress updates for ${displayName}. Google Docs activity is below expected cadence.`;
+        await prismaAlert.create({ data: { internId: row.internId, type, severity, message } });
+        createdAlerts.push({ internId: row.internId, type, severity });
+      }
+    }
+
+    // Collaboration risk — only one per intern per 24h
+    if (row.documentActivityScore < 45) {
+      const type = 'integration_collaboration_risk';
+      const severity = 'warning';
+
+      const recentSince = new Date(now.getTime() - DEDUP_WINDOW_MS);
+      const existing = await prismaAlert.findFirst({
+        where: { internId: row.internId, type, resolved: false, createdAt: { gte: recentSince } },
+      });
+
+      if (!existing) {
         await prismaAlert.create({
           data: {
             internId: row.internId,
             type,
             severity,
-            message,
+            message: `Collaboration visibility risk for ${displayName}. Document updates are infrequent — progress may not be visible to leads.`,
           },
         });
         createdAlerts.push({ internId: row.internId, type, severity });
       }
     }
-
-    // Collaboration risk alert stub (still driven by docs cadence for now).
-    if (row.documentActivityScore < 45) {
-      const type = 'integration_collaboration_risk';
-      const severity = 'warning';
-
-      const recentSince = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-      const existing = await prismaAlert.findFirst({
-        where: {
-          internId: row.internId,
-          type,
-          resolved: false,
-          createdAt: { gte: recentSince },
-        },
-      });
-
-      if (!existing) {
-        await prismaAlert.create({
-          data: {
-            internId: row.internId,
-            type,
-            severity,
             message: `COLLAB RISK: Collaboration/visibility risk inferred from Google Docs updates for ${row.internName ?? row.internId}. Patterns=${patterns.join(',') || 'none'}. DocumentActivityScore=${row.documentActivityScore}.`,
           },
         });

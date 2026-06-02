@@ -520,12 +520,6 @@ async function detectOperationalRisk({ integrationIntelligenceRows, now = new Da
         createdAlerts.push({ internId: row.internId, type, severity });
       }
     }
-            message: `COLLAB RISK: Collaboration/visibility risk inferred from Google Docs updates for ${row.internName ?? row.internId}. Patterns=${patterns.join(',') || 'none'}. DocumentActivityScore=${row.documentActivityScore}.`,
-          },
-        });
-        createdAlerts.push({ internId: row.internId, type, severity });
-      }
-    }
   }
 
   return createdAlerts;

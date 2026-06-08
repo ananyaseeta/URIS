@@ -11,19 +11,23 @@ import { useAlertStore } from '../store/alertStore'
 // ── Type meta ─────────────────────────────────────────────────────────────────
 
 const TYPE_META: Record<string, { label: string; color: string; Icon: React.ElementType }> = {
-  task_assigned:         { label: 'TASK ASSIGNED',  color: '#c9a84c', Icon: ClipboardList },
-  task_paused:           { label: 'TASK PAUSED',    color: '#f59e0b', Icon: Pause         },
-  blocker_reported:      { label: 'BLOCKER',        color: '#f87171', Icon: Flag          },
-  review_submitted:      { label: 'REVIEW',         color: '#4ade80', Icon: Star          },
-  deadline_approaching:  { label: 'DEADLINE',       color: '#f87171', Icon: Clock         },
-  availability_reminder: { label: 'AVAILABILITY',   color: '#c9a84c', Icon: Bell          },
-  stale_task:            { label: 'STALE TASK',     color: '#f59e0b', Icon: Clock         },
-  overload:              { label: 'OVERLOAD',       color: '#f87171', Icon: ShieldAlert   },
-  low_performance:       { label: 'PERFORMANCE',    color: '#f87171', Icon: AlertTriangle },
-  spike:                 { label: 'SCORE SPIKE',    color: '#f59e0b', Icon: AlertTriangle },
-  low_capacity:          { label: 'LOW CAPACITY',   color: '#f59e0b', Icon: AlertTriangle },
-  form_reminder:         { label: 'FORM REMINDER',  color: '#c9a84c', Icon: FileText      },
-  task_reminder:         { label: 'TASK REMINDER',  color: '#f59e0b', Icon: ClipboardList },
+  // ── Intern-facing ─────────────────────────────────────────────────────────
+  task_assigned:         { label: 'TASK ASSIGNED',     color: '#c9a84c', Icon: ClipboardList },
+  task_paused:           { label: 'TASK PAUSED',       color: '#f59e0b', Icon: Pause         },
+  blocker_reported:      { label: 'BLOCKER',           color: '#f87171', Icon: Flag          },
+  review_submitted:      { label: 'REVIEW',            color: '#4ade80', Icon: Star          },
+  deadline_approaching:  { label: 'DEADLINE',          color: '#f87171', Icon: Clock         },
+  availability_reminder: { label: 'AVAILABILITY',      color: '#c9a84c', Icon: Bell          },
+  stale_task:            { label: 'STALE TASK',        color: '#f59e0b', Icon: Clock         },
+  overload:              { label: 'OVERLOAD',          color: '#f87171', Icon: ShieldAlert   },
+  low_performance:       { label: 'PERFORMANCE',       color: '#f87171', Icon: AlertTriangle },
+  spike:                 { label: 'SCORE SPIKE',       color: '#f59e0b', Icon: AlertTriangle },
+  low_capacity:          { label: 'LOW CAPACITY',      color: '#f59e0b', Icon: AlertTriangle },
+  form_reminder:         { label: 'FORM REMINDER',     color: '#c9a84c', Icon: FileText      },
+  task_reminder:         { label: 'TASK REMINDER',     color: '#f59e0b', Icon: ClipboardList },
+  // ── Admin/lead operational ─────────────────────────────────────────────────
+  credibility_risk:             { label: 'CREDIBILITY RISK',    color: '#f87171', Icon: ShieldAlert   },
+  reassignment_recommendation:  { label: 'REASSIGNMENT',        color: '#f59e0b', Icon: AlertTriangle },
 }
 
 function getMeta(type: string) {

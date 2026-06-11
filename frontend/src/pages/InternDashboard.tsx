@@ -13,6 +13,7 @@ import GoogleCalendarPanel from '../components/GoogleCalendarPanel'
 import PresenceWidget     from '../components/PresenceWidget'
 import { useTeamStore, selectActiveTeam } from '../store/teamStore'
 import { getTeamContribution, type TeamContribution } from '../services/team.service'
+import api from '../services/api'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

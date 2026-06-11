@@ -1270,15 +1270,6 @@ export default function Intelligence() {
   }, [tab])
 
   useEffect(() => {
-    if (tab !== 'presence') return
-    import('../services/api').then(({ default: api }) => {
-      api.get('/analytics/presence')
-        .then(r => setPresenceData((r.data as any).data))
-        .catch(() => {})
-    })
-  }, [tab])
-
-  useEffect(() => {
     getAnalyticsDashboard()
       .then(setData)
       .catch(err => setError(extractErrorMessage(err, 'Failed to load analytics data.')))

@@ -161,42 +161,7 @@ const uploadDir = process.env.UPLOAD_DIR
 app.use('/uploads/profile-pictures', express.static(uploadDir));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// ── TEMP: Email integration test route ───────────────────────────────────────
-// GET /test-email?to=you@example.com
-// Remove this route once Resend delivery is confirmed.
-app.get('/test-email', async (req, res) => {
-  const { sendEmail } = require('./src/services/email.service');
-  const to = req.query.to || process.env.SMTP_USER;
 
-  if (!to) {
-    return res.status(400).json({ success: false, error: 'Provide ?to=email or set SMTP_USER in env.' });
-  }
-
-  try {
-    const result = await sendEmail({
-      to,
-      templateName: 'task-assigned',
-      templateData: {
-        name:        'Test User',
-        taskTitle:   'URIS Email Integration Test',
-        taskDescription: 'This is a test email to verify Resend delivery and branded HTML rendering.',
-        complexity:  3,
-      },
-    });
-
-    if (result.success) {
-      logger.info({ to, id: result.id }, 'Test email sent successfully');
-      return res.json({ success: true, message: `Test email sent to ${to}`, id: result.id });
-    } else {
-      logger.warn({ to, result }, 'Test email failed');
-      return res.status(500).json({ success: false, error: result.error || result.reason, detail: result });
-    }
-  } catch (err) {
-    logger.error({ err }, 'Test email route threw unexpectedly');
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-// ── END TEMP ──────────────────────────────────────────────────────────────────
 
 app.use(errorHandler);
 

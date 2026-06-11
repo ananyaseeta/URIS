@@ -115,7 +115,7 @@ async function requestPasswordReset(email, role, leadEmail) {
 
   // If lead email is provided and different from user email, send copy to lead
   if (leadEmail && leadEmail.trim() !== '' && leadEmail !== email) {
-    void notificationService.notifyPasswordResetLead(leadEmail, user.email, resetUrl);
+    void notificationService.notifyPasswordReset(leadEmail, resetUrl);
   }
 
   return { success: true, message: GENERIC_MSG };

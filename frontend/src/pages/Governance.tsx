@@ -421,13 +421,25 @@ function AccessMatrixTab({ matrix, onSave }: { matrix: AccessMatrixResponse | nu
     ? matrix.matrix.find(r => r.role === selectedRole)
     : null
 
-  // Key permissions to show in the summary grid
+  // Assignment permissions — shown separately with gold highlight
+  const ASSIGN_PERMS = [
+    'CAN_ASSIGN_TO_CORE_ADMIN',
+    'CAN_ASSIGN_TO_ADMIN',
+    'CAN_ASSIGN_TO_LEAD',
+    'CAN_ASSIGN_TO_INTERN',
+  ]
+
+  // Key permissions to show in the summary grid (assignment perms excluded — shown separately)
   const KEY_PERMS = [
     'CAN_ASSIGN_TASKS', 'CAN_CREATE_TASKS', 'CAN_SUBMIT_REVIEW',
     'CAN_OVERRIDE_SCORE', 'CAN_ARCHIVE_USERS', 'CAN_CHANGE_USER_ROLE',
     'CAN_VIEW_NOTES', 'CAN_VIEW_ALL_INTERNS', 'CAN_MANAGE_APPROVALS',
     'CAN_VIEW_AUDIT_LOGS', 'CAN_MANAGE_IP_BLOCKS', 'CAN_VIEW_LOGIN_LOGS',
   ]
+
+  // Separate general vs assignment permissions for the edit table
+  const generalPermsAll  = matrix.allPermissions.filter(p => !ASSIGN_PERMS.includes(p)).sort()
+  const assignPermsInMatrix = matrix.allPermissions.filter(p => ASSIGN_PERMS.includes(p))
 
   function enterEditMode() {
     if (!matrix) return
@@ -541,8 +553,35 @@ function AccessMatrixTab({ matrix, onSave }: { matrix: AccessMatrixResponse | nu
               {roleData.permissions.length} of {matrix.allPermissions.length} permissions granted
             </p>
           </div>
+
+          {/* Assignment target permissions — highlighted in gold */}
+          {assignPermsInMatrix.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center gap-2 mb-2 pb-2" style={{ borderBottom: '1px solid rgba(201,168,76,0.1)' }}>
+                <Users size={11} style={{ color: GOLD }} />
+                <p className="nav-label text-[0.5rem]" style={{ color: `${GOLD}88` }}>ASSIGNMENT TARGET PERMISSIONS</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4">
+                {ASSIGN_PERMS.map(p => {
+                  const has = roleData.permissions.includes(p)
+                  return (
+                    <div key={p} className="flex items-center gap-2 p-2 rounded-sm"
+                      style={{ background: has ? 'rgba(201,168,76,0.08)' : 'rgba(248,113,113,0.04)', border: `1px solid ${has ? 'rgba(201,168,76,0.2)' : 'rgba(248,113,113,0.08)'}` }}>
+                      {has
+                        ? <CheckCircle size={11} style={{ color: GOLD, flexShrink: 0 }} />
+                        : <X size={11} style={{ color: 'rgba(248,113,113,0.4)', flexShrink: 0 }} />}
+                      <span className="nav-label text-[0.5rem]" style={{ color: has ? GOLD : 'rgba(184,212,240,0.25)' }}>
+                        {p.replace('CAN_ASSIGN_TO_', 'Assign to → ')}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {matrix.allPermissions.sort().map(p => {
+            {generalPermsAll.map(p => {
               const has = roleData.permissions.includes(p)
               return (
                 <div key={p} className="flex items-center gap-2 p-2 rounded-sm"
@@ -560,10 +599,79 @@ function AccessMatrixTab({ matrix, onSave }: { matrix: AccessMatrixResponse | nu
         </div>
       )}
 
-      {/* Edit mode — full interactive matrix */}
+      {/* Edit mode — Assignment permissions table (gold-highlighted, separate) */}
+      {editMode && assignPermsInMatrix.length > 0 && (
+        <div className="glass-card rounded-sm p-5" style={{ border: '1px solid rgba(201,168,76,0.25)' }}>
+          <div className="flex items-center gap-2 mb-4">
+            <Users size={13} style={{ color: GOLD }} />
+            <div>
+              <p className="nav-label text-[0.55rem]" style={{ color: GOLD }}>ASSIGNMENT TARGET PERMISSIONS</p>
+              <p className="font-body text-xs mt-0.5" style={{ color: ICE_DIM }}>
+                Controls which roles can assign tasks to which target role category. Changes take effect immediately.
+              </p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="uris-table w-full text-center" style={{ minWidth: '700px' }}>
+              <thead>
+                <tr>
+                  <th className="text-left sticky left-0" style={{ background: 'rgba(13,15,28,0.95)', minWidth: '220px' }}>Can Assign To →</th>
+                  {filteredMatrix.map(r => (
+                    <th key={r.role} className="text-center" style={{ minWidth: '80px' }}>
+                      <span className="nav-label text-[0.45rem]" style={{ color: ICE_DIM }}>
+                        {r.role.replace(/_/g, ' ').split(' ').map((w: string) => w[0]).join('')}
+                      </span>
+                      <span className="block nav-label text-[0.4rem] mt-0.5" style={{ color: `${ICE_DIM}88` }}>
+                        {r.role.replace(/_/g, ' ').split(' ')[0]}
+                      </span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {ASSIGN_PERMS.map(p => (
+                  <tr key={p}>
+                    <td className="text-left sticky left-0" style={{ background: 'rgba(13,15,28,0.95)' }}>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: GOLD }} />
+                        <span className="nav-label text-[0.5rem]" style={{ color: GOLD }}>
+                          {p.replace('CAN_ASSIGN_TO_', '')}
+                        </span>
+                      </div>
+                    </td>
+                    {filteredMatrix.map(r => {
+                      const has = (editPerms[r.role] ?? r.permissions).includes(p)
+                      return (
+                        <td key={r.role}>
+                          <motion.button
+                            whileHover={{ scale: 1.2 }} whileTap={{ scale: 0.9 }}
+                            onClick={() => togglePerm(r.role, p)}
+                            className="w-6 h-6 rounded-sm flex items-center justify-center mx-auto transition-all"
+                            style={{
+                              background: has ? 'rgba(201,168,76,0.2)' : 'rgba(248,113,113,0.08)',
+                              border: `1px solid ${has ? 'rgba(201,168,76,0.5)' : 'rgba(248,113,113,0.2)'}`,
+                              cursor: 'pointer',
+                            }}
+                            title={`${has ? 'Revoke' : 'Grant'} ${p} for ${r.role}`}>
+                            {has
+                              ? <CheckCircle size={10} style={{ color: GOLD }} />
+                              : <X size={10} style={{ color: 'rgba(248,113,113,0.5)' }} />}
+                          </motion.button>
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Edit mode — General permissions table */}
       {editMode && (
         <div className="glass-card rounded-sm p-5">
-          <p className="nav-label text-[0.55rem] mb-4" style={{ color: `${GOLD}66` }}>EDIT PERMISSIONS — CLICK TO TOGGLE</p>
+          <p className="nav-label text-[0.55rem] mb-4" style={{ color: `${GOLD}66` }}>GENERAL PERMISSIONS — CLICK TO TOGGLE</p>
           <div className="overflow-x-auto">
             <table className="uris-table w-full text-center" style={{ minWidth: '700px' }}>
               <thead>
@@ -582,7 +690,7 @@ function AccessMatrixTab({ matrix, onSave }: { matrix: AccessMatrixResponse | nu
                 </tr>
               </thead>
               <tbody>
-                {matrix.allPermissions.sort().map(p => (
+                {generalPermsAll.map(p => (
                   <tr key={p}>
                     <td className="text-left nav-label text-[0.5rem] sticky left-0" style={{ background: 'rgba(13,15,28,0.95)', color: ICE_DIM }}>
                       {p.replace(/^CAN_/, '').replace(/_/g, ' ')}

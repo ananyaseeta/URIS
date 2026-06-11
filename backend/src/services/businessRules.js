@@ -294,6 +294,43 @@ function validateAvailabilitySubmission({ maxFreeBlockHours, weekStart, weekEnd,
 // ── Assignment ─────────────────────────────────────────────────────────────────
 
 /**
+ * Maps a user's role to the permission required to assign tasks TO them.
+ * Uses the governance-configurable assignment target permissions.
+ */
+const TARGET_ROLE_PERMISSION_MAP = {
+  CORE_ADMIN:                 'CAN_ASSIGN_TO_CORE_ADMIN',
+  TECHNICAL_LEAD:             'CAN_ASSIGN_TO_ADMIN',
+  OPERATIONS_LEAD:            'CAN_ASSIGN_TO_ADMIN',
+  RESEARCH_LEAD:              'CAN_ASSIGN_TO_ADMIN',
+  OPERATIONS_PROGRAM_MANAGER: 'CAN_ASSIGN_TO_ADMIN',
+  OBSERVER_TEAM_LEAD:         'CAN_ASSIGN_TO_LEAD',
+  COLLABORATOR_LEAD:          'CAN_ASSIGN_TO_LEAD',
+  TECHNICAL_INTERN:           'CAN_ASSIGN_TO_INTERN',
+  OPERATIONS_INTERN:          'CAN_ASSIGN_TO_INTERN',
+  RESEARCH_INTERN:            'CAN_ASSIGN_TO_INTERN',
+  ORENDA_MEMBER:              'CAN_ASSIGN_TO_INTERN',
+};
+
+/**
+ * Check whether the assigning user's role has permission to assign tasks
+ * to the intern's associated user role.
+ *
+ * Uses live DB-backed permission overrides so Governance Access Matrix
+ * changes take effect immediately.
+ *
+ * @param {string} assignerRole - Role of the person doing the assignment
+ * @param {string} targetUserRole - Role of the user being assigned to
+ * @returns {Promise<{ allowed: boolean; permission: string | null }>}
+ */
+async function canAssignToTargetRole(assignerRole, targetUserRole) {
+  const { roleHasPermissionAsync } = require('../constants/permissions');
+
+  const permission = TARGET_ROLE_PERMISSION_MAP[targetUserRole] || 'CAN_ASSIGN_TO_INTERN';
+  const allowed = await roleHasPermissionAsync(assignerRole, permission);
+  return { allowed, permission };
+}
+
+/**
  * Validates business rules for task assignment.
  *
  * Checks:
@@ -306,13 +343,31 @@ async function validateTaskAssignment({ internId, taskId, user }) {
   const { ROLES } = require('../constants/roles');
   
   // 1. Intern must exist
-  const intern = await prisma.intern.findUnique({ where: { id: internId } });
+  const intern = await prisma.intern.findUnique({
+    where: { id: internId },
+    include: { user: { select: { role: true } } },
+  });
   if (!intern) {
     return {
       ok:      false,
       status:  404,
       message: `Intern with id "${internId}" does not exist`,
     };
+  }
+
+  // 1b. Check assignment target permission (governance-configurable)
+  if (user) {
+    const targetUserRole = intern.user?.role;
+    if (targetUserRole) {
+      const { allowed, permission } = await canAssignToTargetRole(user.role, targetUserRole);
+      if (!allowed) {
+        return {
+          ok:      false,
+          status:  403,
+          message: `You do not have permission to assign tasks to this role. (Required: ${permission})`,
+        };
+      }
+    }
   }
 
   // 2. Task must exist
@@ -362,4 +417,5 @@ module.exports = {
   validateReviewSubmission,
   validateAvailabilitySubmission,
   validateTaskAssignment,
+  canAssignToTargetRole,
 };

@@ -176,6 +176,46 @@ const PERMISSION_ROLES = Object.freeze({
     ROLES.OBSERVER_TEAM_LEAD,
     ROLES.COLLABORATOR_LEAD,
   ]),
+
+  // ── Assignment target permissions ──────────────────────────────────────────
+  // Controls which roles can assign tasks TO which target role category.
+  // These are configurable via the Governance Access Matrix.
+  //
+  // Default policy (mirrors historical hardcoded behaviour):
+  //   CORE_ADMIN can assign to everyone
+  //   Leads/Managers can assign to leads and interns but NOT to core_admin
+  //   Interns cannot assign at all (they lack CAN_ASSIGN_TASKS entirely)
+
+  CAN_ASSIGN_TO_CORE_ADMIN: new Set([
+    ROLES.CORE_ADMIN,
+  ]),
+
+  CAN_ASSIGN_TO_ADMIN: new Set([
+    ROLES.CORE_ADMIN,
+    ROLES.TECHNICAL_LEAD,
+    ROLES.OPERATIONS_LEAD,
+    ROLES.RESEARCH_LEAD,
+    ROLES.OPERATIONS_PROGRAM_MANAGER,
+    ROLES.COLLABORATOR_LEAD,
+  ]),
+
+  CAN_ASSIGN_TO_LEAD: new Set([
+    ROLES.CORE_ADMIN,
+    ROLES.TECHNICAL_LEAD,
+    ROLES.OPERATIONS_LEAD,
+    ROLES.RESEARCH_LEAD,
+    ROLES.OPERATIONS_PROGRAM_MANAGER,
+    ROLES.COLLABORATOR_LEAD,
+  ]),
+
+  CAN_ASSIGN_TO_INTERN: new Set([
+    ROLES.CORE_ADMIN,
+    ROLES.TECHNICAL_LEAD,
+    ROLES.OPERATIONS_LEAD,
+    ROLES.RESEARCH_LEAD,
+    ROLES.OPERATIONS_PROGRAM_MANAGER,
+    ROLES.COLLABORATOR_LEAD,
+  ]),
 });
 
 /**
@@ -188,12 +228,45 @@ const PERMISSIONS = Object.freeze(
 
 /**
  * Check whether a role holds a given permission.
+ * Checks configStore overrides first (live, database-backed).
+ * Falls back to the static PERMISSION_ROLES defaults when no override exists.
+ *
+ * This is the SYNCHRONOUS form used by permission.middleware — it checks
+ * an in-process override cache that is populated on first access.
+ * Use roleHasPermissionAsync() for guaranteed-fresh DB reads.
  *
  * @param {string} role       - A value from ROLES
  * @param {string} permission - A key from PERMISSIONS
+ * @param {Object} [runtimeOverrides] - Optional pre-fetched overrides (passed by async middleware)
  * @returns {boolean}
  */
-function roleHasPermission(role, permission) {
+function roleHasPermission(role, permission, runtimeOverrides) {
+  // If runtime overrides are passed (from async middleware), use them
+  if (runtimeOverrides && runtimeOverrides[role] !== undefined) {
+    return runtimeOverrides[role].includes(permission);
+  }
+  // Fall back to static defaults
+  const roleSet = PERMISSION_ROLES[permission];
+  if (!roleSet) return false;
+  return roleSet.has(role);
+}
+
+/**
+ * Async version — always reads the latest overrides from the DB-backed
+ * configStore before checking. Used by assignment validation.
+ *
+ * @param {string} role
+ * @param {string} permission
+ * @returns {Promise<boolean>}
+ */
+async function roleHasPermissionAsync(role, permission) {
+  try {
+    const configStore = require('../services/configStore');
+    const overrides = (await configStore.get('permission_overrides', {})) || {};
+    if (overrides[role] !== undefined) {
+      return overrides[role].includes(permission);
+    }
+  } catch { /* fall through to static defaults */ }
   const roleSet = PERMISSION_ROLES[permission];
   if (!roleSet) return false;
   return roleSet.has(role);
@@ -211,4 +284,4 @@ function getPermissionsForRole(role) {
     .map(([permission]) => permission);
 }
 
-module.exports = { PERMISSIONS, PERMISSION_ROLES, roleHasPermission, getPermissionsForRole };
+module.exports = { PERMISSIONS, PERMISSION_ROLES, roleHasPermission, roleHasPermissionAsync, getPermissionsForRole };

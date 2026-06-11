@@ -314,7 +314,14 @@ async function updateAccessMatrix(req, res, next) {
     await configStore.set('permission_overrides', merged);
 
     void logAction(req.user?.id ?? null, 'UPDATE_ACCESS_MATRIX', 'SYSTEM', null, {
-      updatedRoles: Object.keys(overrides),
+      updatedRoles:       Object.keys(overrides),
+      permissionChanges:  Object.entries(overrides).map(([role, perms]) => ({
+        role,
+        permissionCount: perms.length,
+        permissions:     perms,
+      })),
+      changedBy: req.user?.id ?? 'system',
+      timestamp: new Date().toISOString(),
     });
 
     return ok(res, { overrides: merged }, 'Access matrix updated successfully.');

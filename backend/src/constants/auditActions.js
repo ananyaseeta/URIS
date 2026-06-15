@@ -91,6 +91,10 @@ const AUDIT_ACTIONS = Object.freeze({
   CHECK_IN:       'CHECK_IN',
   CHECK_OUT:      'CHECK_OUT',
   DECLARE_WINDOW: 'DECLARE_WINDOW',
+
+  // ── Core Admin Delegation ──────────────────────────────────────────────────
+  DELEGATE_CORE_ADMIN:        'DELEGATE_CORE_ADMIN',
+  REVOKE_CORE_ADMIN_DELEGATE: 'REVOKE_CORE_ADMIN_DELEGATE',
 });
 
 /**

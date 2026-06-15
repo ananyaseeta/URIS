@@ -322,8 +322,25 @@ const TARGET_ROLE_PERMISSION_MAP = {
  * @param {string} targetUserRole - Role of the user being assigned to
  * @returns {Promise<{ allowed: boolean; permission: string | null }>}
  */
-async function canAssignToTargetRole(assignerRole, targetUserRole) {
+async function canAssignToTargetRole(assignerRole, targetUserRole, assignerUserId) {
   const { roleHasPermissionAsync } = require('../constants/permissions');
+
+  // If assignerUserId is provided, check if they are a CORE_ADMIN delegate
+  // Delegates get full CORE_ADMIN assignment capabilities
+  if (assignerUserId && assignerRole !== 'CORE_ADMIN') {
+    try {
+      const { isDelegate } = require('./delegationService');
+      const delegated = await isDelegate(assignerUserId);
+      if (delegated) {
+        // Treat as CORE_ADMIN — can assign to anyone except CORE_ADMIN itself
+        // (CORE_ADMIN target is still restricted for delegates by design)
+        const effectiveRole = 'CORE_ADMIN';
+        const permission = TARGET_ROLE_PERMISSION_MAP[targetUserRole] || 'CAN_ASSIGN_TO_INTERN';
+        const allowed = await roleHasPermissionAsync(effectiveRole, permission);
+        return { allowed, permission };
+      }
+    } catch { /* non-fatal */ }
+  }
 
   const permission = TARGET_ROLE_PERMISSION_MAP[targetUserRole] || 'CAN_ASSIGN_TO_INTERN';
   const allowed = await roleHasPermissionAsync(assignerRole, permission);
@@ -359,7 +376,7 @@ async function validateTaskAssignment({ internId, taskId, user }) {
   if (user) {
     const targetUserRole = intern.user?.role;
     if (targetUserRole) {
-      const { allowed, permission } = await canAssignToTargetRole(user.role, targetUserRole);
+      const { allowed, permission } = await canAssignToTargetRole(user.role, targetUserRole, user.id);
       if (!allowed) {
         return {
           ok:      false,

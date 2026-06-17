@@ -6,7 +6,9 @@ import Starfield from '../components/Starfield'
 import api from '../services/api'
 import { ArrowLeft, Send, Loader2, MessageSquare } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { io as socketIO, Socket } from 'socket.io-client'
+// Use the existing singleton socket from socket.service — no second connection.
+// The realtimeStore already connects this socket on login.
+import { getSocket } from '../services/socket.service'
 
 interface Message {
   id: string
@@ -45,7 +47,6 @@ export default function ChatViewPage() {
   const [chatName, setChatName]   = useState('')
 
   const bottomRef   = useRef<HTMLDivElement>(null)
-  const socketRef   = useRef<Socket | null>(null)
   const inputRef    = useRef<HTMLTextAreaElement>(null)
 
   // ── Load messages ──────────────────────────────────────────────────────────
@@ -82,38 +83,37 @@ export default function ChatViewPage() {
       .catch(() => setChatName('Chat'))
   }, [chatId])
 
-  // ── Socket connection ──────────────────────────────────────────────────────
+  // ── Socket — reuse the singleton from socket.service (no second connection) ──
+  // The realtimeStore already holds an authenticated socket created at login.
+  // We join the chat room on that socket and leave when leaving the view.
+  // This eliminates the duplicate connection that previously existed (BUG-C2).
   useEffect(() => {
-    if (!token || !chatId) return
+    if (!chatId) return
 
-    const backendUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'
-    const socket = socketIO(backendUrl, {
-      auth: { token },
-      transports: ['websocket', 'polling'],
-    })
-    socketRef.current = socket
+    const socket = getSocket()
+    if (!socket) return
 
-    socket.on('connect', () => {
-      socket.emit('chat:join', { chatId })
-    })
+    // Join the chat room on the shared socket
+    // The server validates ChatParticipant membership before allowing the join
+    socket.emit('chat:join', { chatId })
 
-    socket.on('newMessage', (data: { message: Message; chatId: string }) => {
+    const handleNewMessage = (data: { message: Message; chatId: string }) => {
       if (data.chatId !== chatId) return
-      // Skip if this message was already appended optimistically by the sender
-      // (the REST response and the socket broadcast carry the same message id).
+      // Skip if already appended optimistically by the sender (BUG-C1 fix)
       setMessages(prev => {
         if (prev.some(m => m.id === data.message.id)) return prev
         setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
         return [...prev, data.message]
       })
-    })
+    }
+
+    socket.on('newMessage', handleNewMessage)
 
     return () => {
+      socket.off('newMessage', handleNewMessage)
       socket.emit('chat:leave', { chatId })
-      socket.disconnect()
-      socketRef.current = null
     }
-  }, [token, chatId])
+  }, [chatId])
 
   // ── Initial load + scroll to bottom ───────────────────────────────────────
   useEffect(() => {

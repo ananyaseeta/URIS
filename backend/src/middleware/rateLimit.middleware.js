@@ -81,8 +81,6 @@ const forgotPasswordLimiter = rateLimit({
   handler:         rateLimitHandler,
 });
 
-module.exports = { loginLimiter, registerLimiter, apiLimiter, forgotPasswordLimiter, chatMessageLimiter };
-
 // ── Chat message limiter ──────────────────────────────────────────────────────
 // Per-user (keyed by JWT user id) limit on sending messages.
 // Prevents a single user from flooding a chat.
@@ -92,6 +90,9 @@ module.exports = { loginLimiter, registerLimiter, apiLimiter, forgotPasswordLimi
 //
 // 10 messages per 10 seconds is generous for normal conversation but
 // stops programmatic flooding at HTTP throughput.
+//
+// NOTE: This declaration MUST remain above module.exports so the exported
+// value is the actual middleware function, not undefined (CRIT-1 fix).
 const chatMessageLimiter = rateLimit({
   windowMs:        parseInt(process.env.RATE_LIMIT_CHAT_WINDOW_MS) || 10 * 1000,
   max:             parseInt(process.env.RATE_LIMIT_CHAT_MAX)        || 10,
@@ -106,3 +107,5 @@ const chatMessageLimiter = rateLimit({
     data:    null,
   }),
 });
+
+module.exports = { loginLimiter, registerLimiter, apiLimiter, forgotPasswordLimiter, chatMessageLimiter };

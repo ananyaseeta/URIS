@@ -137,6 +137,24 @@ export default function ChatViewPage() {
       })
     }
 
+    // CRIT-2 fix: apply edits broadcast by the server to the local message list.
+    // Without this handler, edits made by other participants are invisible until reload.
+    const handleMessageEdited = (data: { message: Message; chatId: string }) => {
+      if (data.chatId !== chatId) return
+      setMessages(prev =>
+        prev.map(m => m.id === data.message.id ? { ...m, content: data.message.content, editedAt: data.message.editedAt } : m)
+      )
+    }
+
+    // CRIT-2 fix: apply soft-deletes broadcast by the server to the local message list.
+    // Without this handler, deletes made by other participants are invisible until reload.
+    const handleMessageDeleted = (data: { messageId: string; chatId: string }) => {
+      if (data.chatId !== chatId) return
+      setMessages(prev =>
+        prev.map(m => m.id === data.messageId ? { ...m, isDeleted: true } : m)
+      )
+    }
+
     // Typing indicator — add the typing user to the map
     const handleUserTyping = (data: { chatId: string; userId: string; userName: string }) => {
       if (data.chatId !== chatId || data.userId === user?.id) return
@@ -154,11 +172,15 @@ export default function ChatViewPage() {
     }
 
     socket.on('newMessage', handleNewMessage)
+    socket.on('messageEdited', handleMessageEdited)
+    socket.on('messageDeleted', handleMessageDeleted)
     socket.on('chat:user_typing', handleUserTyping)
     socket.on('chat:user_stop_typing', handleUserStopTyping)
 
     return () => {
       socket.off('newMessage', handleNewMessage)
+      socket.off('messageEdited', handleMessageEdited)
+      socket.off('messageDeleted', handleMessageDeleted)
       socket.off('chat:user_typing', handleUserTyping)
       socket.off('chat:user_stop_typing', handleUserStopTyping)
       socket.emit('chat:leave', { chatId })
@@ -356,13 +378,23 @@ export default function ChatViewPage() {
                           ? { background: 'rgba(201,168,76,0.15)', border: '1px solid rgba(201,168,76,0.25)' }
                           : { background: 'rgba(13,15,28,0.8)', border: '1px solid rgba(184,212,240,0.08)' }
                         }>
-                        <p className="font-body text-sm leading-snug"
-                          style={{ color: isMe ? '#e2c76e' : 'rgba(232,240,251,0.85)' }}>
-                          {msg.content}
-                        </p>
-                        <p className="nav-label text-[0.44rem] mt-1"
+                        {msg.isDeleted ? (
+                          <p className="font-body text-sm leading-snug italic"
+                            style={{ color: isMe ? 'rgba(201,168,76,0.35)' : 'rgba(184,212,240,0.3)' }}>
+                            Message deleted
+                          </p>
+                        ) : (
+                          <p className="font-body text-sm leading-snug"
+                            style={{ color: isMe ? '#e2c76e' : 'rgba(232,240,251,0.85)' }}>
+                            {msg.content}
+                          </p>
+                        )}
+                        <p className="nav-label text-[0.44rem] mt-1 flex items-center gap-1"
                           style={{ color: isMe ? 'rgba(201,168,76,0.5)' : 'rgba(184,212,240,0.25)' }}>
                           {formatTime(msg.createdAt)}
+                          {msg.editedAt && !msg.isDeleted && (
+                            <span className="italic opacity-70">(edited)</span>
+                          )}
                         </p>
                       </div>
                     </motion.div>

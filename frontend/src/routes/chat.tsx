@@ -11,6 +11,8 @@ interface Chat {
   id: string
   type: 'PRIVATE' | 'GROUP'
   name?: string
+  // Resolved for PRIVATE chats — the other participant's details (BUG-M2 fix)
+  otherParticipant?: { id: string; name: string; email: string } | null
   createdAt: string
   lastMessage?: {
     content: string
@@ -168,7 +170,9 @@ export default function ChatPage() {
                         </div>
                         <div className="min-w-0">
                           <p className="font-body font-semibold text-ice truncate">
-                            {chat.type === 'PRIVATE' ? 'Private Chat' : (chat.name ?? 'Group Chat')}
+                            {chat.type === 'PRIVATE'
+                              ? (chat.otherParticipant?.name ?? chat.otherParticipant?.email ?? 'Private Chat')
+                              : (chat.name ?? 'Group Chat')}
                           </p>
                           {chat.lastMessage ? (
                             <p className="text-[0.55rem] text-ice/40 truncate max-w-[240px]">

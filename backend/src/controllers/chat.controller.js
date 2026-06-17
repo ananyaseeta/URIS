@@ -314,10 +314,23 @@ async function getChats(req, res, next) {
     //   - chats with no messages → sorted by chat createdAt desc, after messaged chats
     const chatsWithLastMessage = chats.map(chat => {
       const lastMessage = chat.messages[0];
+
+      // For PRIVATE chats: resolve the other participant's name so the frontend
+      // can display it instead of the generic "Private Chat" label (BUG-M2).
+      // participants is always fetched with user data included above.
+      const otherParticipant = chat.type === 'PRIVATE'
+        ? (chat.participants.find(p => p.userId !== req.user.id)?.user ?? null)
+        : null;
+
       return {
         id: chat.id,
         type: chat.type,
+        // For GROUP chats use the stored name; for PRIVATE chats include
+        // the other person's details so the frontend can render their name.
         name: chat.name,
+        otherParticipant: otherParticipant
+          ? { id: otherParticipant.id, name: otherParticipant.name, email: otherParticipant.email }
+          : null,
         createdAt: chat.createdAt,
         lastMessage: lastMessage
           ? {

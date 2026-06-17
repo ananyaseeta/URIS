@@ -121,7 +121,7 @@ async function register({ name, email, password, role, dateOfBirth, joiningDate,
   // All other registrations are pending approval — no token issued.
   if (isCoreAdminEmail || isAdminDomain) {
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      { id: user.id, email: user.email, role: user.role, internId: null },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '1d' }
     );
@@ -181,7 +181,12 @@ async function checkAndAutoBlockIP(ip) {
 }
 
 async function login({ email, password, ip = '0.0.0.0' }) {
-  const user = await prisma.user.findUnique({ where: { email } });
+  // Also fetch the linked Intern record id so it can be embedded in the JWT.
+  // The realtimeEngine uses internId to place interns in their personal socket room.
+  const user = await prisma.user.findUnique({
+    where: { email },
+    include: { intern: { select: { id: true } } },
+  });
 
   const invalidErr = new Error('Invalid email or password.');
   invalidErr.status = 401;
@@ -214,7 +219,7 @@ async function login({ email, password, ip = '0.0.0.0' }) {
   }
 
   const token = jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
+    { id: user.id, email: user.email, role: user.role, internId: user.intern?.id ?? null },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '1d' }
   );

@@ -75,10 +75,21 @@ export default function ChatViewPage() {
   // ── Load chat name from chats list ─────────────────────────────────────────
   useEffect(() => {
     if (!chatId) return
-    api.get<{ success: boolean; data: { id: string; type: string; name?: string }[] }>('/chat/chats')
+    api.get<{ success: boolean; data: Array<{
+      id: string
+      type: string
+      name?: string
+      otherParticipant?: { id: string; name: string; email: string } | null
+    }> }>('/chat/chats')
       .then(res => {
         const chat = (res.data.data ?? []).find(c => c.id === chatId)
-        setChatName(chat?.name ?? (chat?.type === 'PRIVATE' ? 'Private Chat' : 'Group Chat'))
+        if (!chat) { setChatName('Chat'); return }
+        if (chat.type === 'PRIVATE') {
+          // Use the other participant's name for private chats (BUG-M2 fix)
+          setChatName(chat.otherParticipant?.name ?? chat.otherParticipant?.email ?? 'Private Chat')
+        } else {
+          setChatName(chat.name ?? 'Group Chat')
+        }
       })
       .catch(() => setChatName('Chat'))
   }, [chatId])

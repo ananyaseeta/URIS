@@ -13,6 +13,7 @@ interface Chat {
   name?: string
   // Resolved for PRIVATE chats — the other participant's details (BUG-M2 fix)
   otherParticipant?: { id: string; name: string; email: string } | null
+  unreadCount: number
   createdAt: string
   lastMessage?: {
     content: string
@@ -78,6 +79,15 @@ export default function ChatPage() {
       setError('Failed to create chat')
       console.error(err)
     }
+  }
+
+  // Navigate into a chat and mark it as read immediately
+  const handleOpenChat = async (chatId: string) => {
+    // Fire-and-forget — mark as read before navigating so the badge clears
+    api.patch(`/chat/chats/${chatId}/read`).catch(() => {})
+    // Optimistic: clear unread badge locally so it disappears immediately
+    setChats(prev => prev.map(c => c.id === chatId ? { ...c, unreadCount: 0 } : c))
+    nav(`/chat/${chatId}`)
   }
 
   const filteredChats = chats.filter(chat => {
@@ -159,7 +169,7 @@ export default function ChatPage() {
                       key={chat.id}
                       whileHover={{ x: 2 }}
                       whileTap={{ scale: 0.99 }}
-                      onClick={() => nav(`/chat/${chat.id}`)}
+                      onClick={() => void handleOpenChat(chat.id)}
                       className="w-full flex items-center justify-between rounded-sm border border-gold/10 bg-navy-900/40 p-4 hover:bg-navy-900/60 transition-colors text-left">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full"
@@ -187,6 +197,13 @@ export default function ChatPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                        {/* Unread badge */}
+                        {chat.unreadCount > 0 && (
+                          <span className="w-5 h-5 rounded-full flex items-center justify-center nav-label text-[0.45rem] font-bold"
+                            style={{ background: '#c9a84c', color: '#0d0f1c' }}>
+                            {chat.unreadCount > 9 ? '9+' : chat.unreadCount}
+                          </span>
+                        )}
                         <span className="text-[0.5rem] text-ice/30">
                           {chat.lastMessage
                             ? new Date(chat.lastMessage.createdAt).toLocaleDateString()

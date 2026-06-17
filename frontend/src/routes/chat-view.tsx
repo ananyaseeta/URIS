@@ -45,9 +45,12 @@ export default function ChatViewPage() {
   const [content, setContent]     = useState('')
   const [error, setError]         = useState('')
   const [chatName, setChatName]   = useState('')
+  // typingUsers: map of userId → display name for users currently typing
+  const [typingUsers, setTypingUsers] = useState<Record<string, string>>({})
 
-  const bottomRef   = useRef<HTMLDivElement>(null)
-  const inputRef    = useRef<HTMLTextAreaElement>(null)
+  const bottomRef        = useRef<HTMLDivElement>(null)
+  const inputRef         = useRef<HTMLTextAreaElement>(null)
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Load messages ──────────────────────────────────────────────────────────
   const loadMessages = useCallback(async (page = 1, append = false) => {
@@ -118,19 +121,45 @@ export default function ChatViewPage() {
       })
     }
 
+    // Typing indicator — add the typing user to the map
+    const handleUserTyping = (data: { chatId: string; userId: string; userName: string }) => {
+      if (data.chatId !== chatId || data.userId === user?.id) return
+      setTypingUsers(prev => ({ ...prev, [data.userId]: data.userName || 'Someone' }))
+    }
+
+    // Stop typing — remove the user from the map
+    const handleUserStopTyping = (data: { chatId: string; userId: string }) => {
+      if (data.chatId !== chatId) return
+      setTypingUsers(prev => {
+        const next = { ...prev }
+        delete next[data.userId]
+        return next
+      })
+    }
+
     socket.on('newMessage', handleNewMessage)
+    socket.on('chat:user_typing', handleUserTyping)
+    socket.on('chat:user_stop_typing', handleUserStopTyping)
 
     return () => {
       socket.off('newMessage', handleNewMessage)
+      socket.off('chat:user_typing', handleUserTyping)
+      socket.off('chat:user_stop_typing', handleUserStopTyping)
       socket.emit('chat:leave', { chatId })
+      // Clear any pending typing timeout
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
     }
-  }, [chatId])
+  }, [chatId, user?.id])
 
   // ── Initial load + scroll to bottom ───────────────────────────────────────
   useEffect(() => {
     if (!token) { nav('/login'); return }
     void loadMessages(1, false)
-  }, [token, nav, loadMessages])
+    // Mark the chat as read when the user opens it — clears the unread badge
+    if (chatId) {
+      api.patch(`/chat/chats/${chatId}/read`).catch(() => {})
+    }
+  }, [token, nav, loadMessages, chatId])
 
   useEffect(() => {
     if (!loading) {
@@ -145,6 +174,7 @@ export default function ChatViewPage() {
 
     setSending(true)
     setContent('')
+    emitStopTyping()
     try {
       const res = await api.post<{ success: boolean; data: Message }>(
         `/chat/chats/${chatId}/messages`,
@@ -167,6 +197,26 @@ export default function ChatViewPage() {
       e.preventDefault()
       void handleSend()
     }
+  }
+
+  // ── Typing indicator emit ─────────────────────────────────────────────────
+  // Emit 'chat:typing' on each keystroke, then debounce 'chat:stop_typing'
+  // after 2 seconds of inactivity. Also emit stop on send/blur.
+  const emitTyping = () => {
+    const socket = getSocket()
+    if (!socket || !chatId) return
+    socket.emit('chat:typing', { chatId })
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+    typingTimeoutRef.current = setTimeout(() => {
+      socket.emit('chat:stop_typing', { chatId })
+    }, 2000)
+  }
+
+  const emitStopTyping = () => {
+    const socket = getSocket()
+    if (!socket || !chatId) return
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+    socket.emit('chat:stop_typing', { chatId })
   }
 
   // ── Load older messages ───────────────────────────────────────────────────
@@ -293,12 +343,29 @@ export default function ChatViewPage() {
 
           {/* Input bar */}
           <div className="flex-shrink-0 pt-3 border-t border-gold/10">
+            {/* Typing indicator */}
+            {Object.keys(typingUsers).length > 0 && (
+              <div className="flex items-center gap-1.5 mb-1.5 px-1">
+                {/* Animated dots */}
+                <span className="flex gap-0.5 items-end">
+                  {[0, 1, 2].map(i => (
+                    <span key={i} className="w-1 h-1 rounded-full bg-ice/30"
+                      style={{ animation: `bounce 1.2s ${i * 0.2}s infinite` }} />
+                  ))}
+                </span>
+                <p className="nav-label text-[0.5rem] text-ice/35 italic">
+                  {Object.values(typingUsers).join(', ')}
+                  {Object.keys(typingUsers).length === 1 ? ' is typing…' : ' are typing…'}
+                </p>
+              </div>
+            )}
             <div className="flex items-end gap-2">
               <textarea
                 ref={inputRef}
                 value={content}
-                onChange={e => setContent(e.target.value)}
+                onChange={e => { setContent(e.target.value); emitTyping() }}
                 onKeyDown={handleKeyDown}
+                onBlur={emitStopTyping}
                 placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
                 rows={1}
                 className="uris-input flex-1 resize-none"

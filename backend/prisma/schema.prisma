@@ -409,12 +409,15 @@ model Chat {
 }
 
 model ChatParticipant {
-  id        String   @id @default(uuid())
-  chatId    String
-  userId    String
-  joinedAt  DateTime @default(now())
-  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String    @id @default(uuid())
+  chatId      String
+  userId      String
+  joinedAt    DateTime  @default(now())
+  // Tracks when this participant last read the chat.
+  // Used to compute unread message counts without a separate read-receipt table.
+  lastReadAt  DateTime?
+  chat        Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([chatId, userId])
   @@index([chatId])

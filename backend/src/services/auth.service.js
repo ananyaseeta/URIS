@@ -219,7 +219,7 @@ async function login({ email, password, ip = '0.0.0.0' }) {
   }
 
   const token = jwt.sign(
-    { id: user.id, email: user.email, role: user.role, internId: user.intern?.id ?? null },
+    { id: user.id, email: user.email, role: user.role, internId: user.intern?.id ?? null, name: user.name || null },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '1d' }
   );

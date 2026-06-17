@@ -81,4 +81,28 @@ const forgotPasswordLimiter = rateLimit({
   handler:         rateLimitHandler,
 });
 
-module.exports = { loginLimiter, registerLimiter, apiLimiter, forgotPasswordLimiter };
+module.exports = { loginLimiter, registerLimiter, apiLimiter, forgotPasswordLimiter, chatMessageLimiter };
+
+// ── Chat message limiter ──────────────────────────────────────────────────────
+// Per-user (keyed by JWT user id) limit on sending messages.
+// Prevents a single user from flooding a chat.
+//
+//   RATE_LIMIT_CHAT_WINDOW_MS  — sliding window in ms  (default: 10 s)
+//   RATE_LIMIT_CHAT_MAX        — max messages per window (default: 10)
+//
+// 10 messages per 10 seconds is generous for normal conversation but
+// stops programmatic flooding at HTTP throughput.
+const chatMessageLimiter = rateLimit({
+  windowMs:        parseInt(process.env.RATE_LIMIT_CHAT_WINDOW_MS) || 10 * 1000,
+  max:             parseInt(process.env.RATE_LIMIT_CHAT_MAX)        || 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders:   false,
+  // Key by authenticated user id, not IP — so VPNs / shared IPs don't affect others
+  keyGenerator: (req) => req.user?.id || req.ip,
+  handler: (req, res) => res.status(429).json({
+    success: false,
+    error:   'RATE_LIMITED',
+    message: 'Sending too fast. Please slow down.',
+    data:    null,
+  }),
+});

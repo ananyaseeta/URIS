@@ -119,6 +119,7 @@ function init(httpServer, allowedOrigins) {
       socket.data.userId   = decoded.id;
       socket.data.role     = decoded.role;
       socket.data.internId = decoded.internId ?? null;
+      socket.data.userName = decoded.name    ?? null;
 
       next();
     } catch (err) {
@@ -174,6 +175,27 @@ function init(httpServer, allowedOrigins) {
         socket.leave(`chat:${chatId}`);
         logger.debug({ userId, chatId }, 'Socket left chat room');
       }
+    });
+
+    // ── Typing indicators (socket-only, no DB) ────────────────────────────
+    // Client emits 'chat:typing' when the user starts typing.
+    // Client emits 'chat:stop_typing' when they stop (on blur or send).
+    // We broadcast to everyone else in the room — NOT back to the sender.
+    socket.on('chat:typing', ({ chatId } = {}) => {
+      if (!chatId || typeof chatId !== 'string') return;
+      socket.to(`chat:${chatId}`).emit('chat:user_typing', {
+        chatId,
+        userId,
+        userName: socket.data.userName ?? userId,
+      });
+    });
+
+    socket.on('chat:stop_typing', ({ chatId } = {}) => {
+      if (!chatId || typeof chatId !== 'string') return;
+      socket.to(`chat:${chatId}`).emit('chat:user_stop_typing', {
+        chatId,
+        userId,
+      });
     });
   });
 

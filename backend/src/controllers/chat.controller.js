@@ -312,7 +312,7 @@ async function getChats(req, res, next) {
     // Build response and sort by most recent activity:
     //   - chats with messages → sorted by last message createdAt desc
     //   - chats with no messages → sorted by chat createdAt desc, after messaged chats
-    const chatsWithLastMessage = chats.map(chat => {
+    const chatsWithLastMessage = await Promise.all(chats.map(async chat => {
       const lastMessage = chat.messages[0];
 
       // For PRIVATE chats: resolve the other participant's name so the frontend
@@ -321,6 +321,19 @@ async function getChats(req, res, next) {
       const otherParticipant = chat.type === 'PRIVATE'
         ? (chat.participants.find(p => p.userId !== req.user.id)?.user ?? null)
         : null;
+
+      // Unread count: messages sent after the current user's lastReadAt.
+      // If lastReadAt is null (never read), count all messages not sent by self.
+      const myParticipant = chat.participants.find(p => p.userId === req.user.id);
+      const lastReadAt = myParticipant?.lastReadAt ?? null;
+
+      const unreadCount = await prisma.message.count({
+        where: {
+          chatId:    chat.id,
+          senderId:  { not: req.user.id }, // don't count own messages as unread
+          createdAt: lastReadAt ? { gt: lastReadAt } : undefined,
+        },
+      });
 
       return {
         id: chat.id,
@@ -331,6 +344,7 @@ async function getChats(req, res, next) {
         otherParticipant: otherParticipant
           ? { id: otherParticipant.id, name: otherParticipant.name, email: otherParticipant.email }
           : null,
+        unreadCount,
         createdAt: chat.createdAt,
         lastMessage: lastMessage
           ? {
@@ -341,7 +355,7 @@ async function getChats(req, res, next) {
             }
           : null,
       };
-    });
+    }));
 
     // Sort: most recently active conversation first
     chatsWithLastMessage.sort((a, b) => {
@@ -446,8 +460,33 @@ async function createGroupChat(req, res, next) {
       return validationError(res, 'Group chat must have at least 2 participants');
     }
 
-    // Include current user in participants
-    const allParticipantIds = [...new Set([...participantIds, req.user.id])];
+    // Deduplicate and exclude self — current user is added automatically
+    const otherParticipantIds = [...new Set(participantIds.filter(id => id !== req.user.id))];
+
+    // Verify the creator is friends with every participant they are adding (BUG-H3 fix).
+    // A user should not be able to silently add someone who has not connected with them.
+    const friendships = await prisma.friendRequest.findMany({
+      where: {
+        status: 'ACCEPTED',
+        OR: [
+          { senderId: req.user.id, receiverId: { in: otherParticipantIds } },
+          { senderId: { in: otherParticipantIds }, receiverId: req.user.id },
+        ],
+      },
+      select: { senderId: true, receiverId: true },
+    });
+
+    // Build the set of user IDs the creator is actually friends with
+    const friendIds = new Set(
+      friendships.map(f => f.senderId === req.user.id ? f.receiverId : f.senderId)
+    );
+
+    const nonFriends = otherParticipantIds.filter(id => !friendIds.has(id));
+    if (nonFriends.length > 0) {
+      return validationError(res, 'You can only add friends to a group chat');
+    }
+
+    const allParticipantIds = [...otherParticipantIds, req.user.id];
 
     // Create group chat
     const chat = await prisma.chat.create({
@@ -596,6 +635,36 @@ async function sendMessage(req, res, next) {
   }
 }
 
+/**
+ * PATCH /chat/chats/:chatId/read
+ * Mark a chat as read by updating the current user's lastReadAt timestamp.
+ * Called when the user opens a conversation. Resets the unread badge.
+ */
+async function markChatRead(req, res, next) {
+  try {
+    const { chatId } = req.params;
+
+    // Verify the user is a participant — do not allow marking chats they can't see
+    const participant = await prisma.chatParticipant.findUnique({
+      where: { chatId_userId: { chatId, userId: req.user.id } },
+      select: { id: true },
+    });
+
+    if (!participant) {
+      return notFound(res, 'Chat not found or access denied');
+    }
+
+    await prisma.chatParticipant.update({
+      where: { chatId_userId: { chatId, userId: req.user.id } },
+      data:  { lastReadAt: new Date() },
+    });
+
+    return ok(res, null, 'Chat marked as read');
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getUsers,
   getFriendRequests,
@@ -608,4 +677,5 @@ module.exports = {
   createGroupChat,
   getMessages,
   sendMessage,
+  markChatRead,
 };

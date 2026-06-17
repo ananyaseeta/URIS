@@ -12,10 +12,12 @@ const {
   createGroupChat,
   getMessages,
   sendMessage,
+  markChatRead,
 } = require('../controllers/chat.controller');
 const { verifyToken } = require('../middleware/auth.middleware');
 const { validate }    = require('../middleware/validate.middleware');
 const { schemas }     = require('../validation/schemas');
+const { chatMessageLimiter } = require('../middleware/rateLimit.middleware');
 
 // User discovery
 router.get('/users', verifyToken, getUsers);
@@ -32,8 +34,11 @@ router.get('/chats', verifyToken, getChats);
 router.post('/private/:friendId', verifyToken, validate(schemas.createPrivateChat), createPrivateChat);
 router.post('/group', verifyToken, validate(schemas.createGroupChat), createGroupChat);
 
-// Messages
+// Messages — rate limited per user (10 messages per 10s) to prevent flooding
 router.get('/chats/:chatId/messages', verifyToken, validate(schemas.getMessages), getMessages);
-router.post('/chats/:chatId/messages', verifyToken, validate(schemas.sendMessage), sendMessage);
+router.post('/chats/:chatId/messages', verifyToken, chatMessageLimiter, validate(schemas.sendMessage), sendMessage);
+
+// Mark chat as read — updates lastReadAt on ChatParticipant for unread count tracking
+router.patch('/chats/:chatId/read', verifyToken, markChatRead);
 
 module.exports = router;

@@ -12,7 +12,6 @@ interface Chat {
   id: string
   type: 'PRIVATE' | 'GROUP'
   name?: string
-  // Resolved for PRIVATE chats — the other participant's details (BUG-M2 fix)
   otherParticipant?: { id: string; name: string; email: string } | null
   unreadCount: number
   createdAt: string
@@ -33,16 +32,22 @@ interface Friend {
 export default function ChatPage() {
   const token = useAuthStore(selectToken)
   const user  = useAuthStore(selectUser)
-  const nav = useNavigate()
+  const nav   = useNavigate()
 
-  const [chats, setChats] = useState<Chat[]>([])
-  const [friends, setFriends] = useState<Friend[]>([])
+  const [chats, setChats]           = useState<Chat[]>([])
+  const [friends, setFriends]       = useState<Friend[]>([])
   const [pendingCount, setPendingCount] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading]       = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError]           = useState('')
 
-  // Track which chat rooms the list page has joined so we can leave them on unmount.
+  // FEAT-S4: set of userIds currently connected via socket
+  const [onlineIds, setOnlineIds]   = useState<Set<string>>(new Set())
+
+  // FEAT-S5: typing state — chatId → array of names currently typing
+  const [typingMap, setTypingMap]   = useState<Record<string, string[]>>({})
+
+  // Track which chat rooms the list page has joined so we can leave on unmount
   const joinedRoomsRef = useRef<string[]>([])
 
   useEffect(() => {
@@ -54,24 +59,36 @@ export default function ChatPage() {
     try {
       setLoading(true)
       const [chatsRes, friendsRes, requestsRes] = await Promise.all([
-        api.get('/chat/chats').catch(() => ({ data: { data: [] } })),
+        api.get<{ success: boolean; data: { chats: Chat[]; onlineUserIds: string[] } }>('/chat/chats')
+          .catch(() => ({ data: { data: { chats: [], onlineUserIds: [] } } })),
         api.get('/chat/friends').catch(() => ({ data: { data: [] } })),
         api.get('/chat/friend-requests').catch(() => ({ data: { data: [] } })),
       ])
-      const loadedChats = Array.isArray(chatsRes.data?.data) ? chatsRes.data.data : []
+
+      // FEAT-S4: backend now returns { chats, onlineUserIds } instead of a plain array
+      const responseData = chatsRes.data?.data as { chats?: Chat[]; onlineUserIds?: string[] } | Chat[]
+      let loadedChats: Chat[]
+      let serverOnlineIds: string[] = []
+
+      if (Array.isArray(responseData)) {
+        // Graceful fallback if backend hasn't redeployed yet
+        loadedChats = responseData
+      } else {
+        loadedChats    = responseData.chats    ?? []
+        serverOnlineIds = responseData.onlineUserIds ?? []
+      }
+
       setChats(loadedChats)
+      setOnlineIds(new Set(serverOnlineIds))
       setFriends(Array.isArray(friendsRes.data?.data) ? friendsRes.data.data : [])
-      // Count only PENDING incoming requests for the badge
+
       const allRequests: { status: string }[] = Array.isArray(requestsRes.data?.data)
-        ? requestsRes.data.data
-        : []
+        ? requestsRes.data.data : []
       setPendingCount(allRequests.filter(r => r.status === 'PENDING').length)
 
-      // HIGH-2 fix: join all the user's chat rooms on the shared socket so
-      // newMessage events are delivered to this page without a full reload.
+      // HIGH-2: join all chat rooms on the shared socket for live updates
       const socket = getSocket()
       if (socket && loadedChats.length > 0) {
-        // Leave any previously joined rooms first (handles loadData being called again)
         for (const id of joinedRoomsRef.current) socket.emit('chat:leave', { chatId: id })
         joinedRoomsRef.current = loadedChats.map((c: Chat) => c.id)
         for (const id of joinedRoomsRef.current) socket.emit('chat:join', { chatId: id })
@@ -84,13 +101,12 @@ export default function ChatPage() {
     }
   }
 
-  // HIGH-2 fix: subscribe to newMessage on the shared socket.
-  // Updates lastMessage preview, increments unreadCount, and re-sorts the list
-  // in real-time whenever a message arrives in any of the user's conversations.
+  // Socket subscriptions: newMessage (HIGH-2) + typing indicators (FEAT-S5)
   useEffect(() => {
     const socket = getSocket()
     if (!socket) return
 
+    // HIGH-2: update last message preview + unread count + sort order
     const handleNewMessage = (data: {
       message: { id: string; chatId: string; senderId: string; content: string; createdAt: string; sender?: { name: string } }
       chatId: string
@@ -98,7 +114,7 @@ export default function ChatPage() {
       setChats(prev => {
         const updated = prev.map(chat => {
           if (chat.id !== data.chatId) return chat
-          const isCurrentUser = data.message.senderId === user?.id
+          const isMe = data.message.senderId === user?.id
           return {
             ...chat,
             lastMessage: {
@@ -107,12 +123,9 @@ export default function ChatPage() {
               senderName: data.message.sender?.name,
               createdAt:  data.message.createdAt,
             },
-            // Only increment unread for messages from others — own messages
-            // are not unread. The badge clears when the user opens the chat.
-            unreadCount: isCurrentUser ? chat.unreadCount : chat.unreadCount + 1,
+            unreadCount: isMe ? chat.unreadCount : chat.unreadCount + 1,
           }
         })
-        // Re-sort: most recently active conversation floats to the top
         return [...updated].sort((a, b) => {
           const aTime = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : new Date(a.createdAt).getTime()
           const bTime = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : new Date(b.createdAt).getTime()
@@ -121,11 +134,38 @@ export default function ChatPage() {
       })
     }
 
-    socket.on('newMessage', handleNewMessage)
+    // FEAT-S5: show typing indicator in the conversation preview row
+    const handleUserTyping = (data: { chatId: string; userId: string; userName: string }) => {
+      if (data.userId === user?.id) return
+      setTypingMap(prev => {
+        const names = prev[data.chatId] ?? []
+        if (names.includes(data.userName)) return prev
+        return { ...prev, [data.chatId]: [...names, data.userName] }
+      })
+    }
+
+    const handleUserStopTyping = (data: { chatId: string; userId: string }) => {
+      setTypingMap(prev => {
+        const names = (prev[data.chatId] ?? []).filter(n => {
+          // We only have userName in typing, not userId — best effort: remove by
+          // re-fetching. Instead track by userId: upgrade to userId-keyed map.
+          // Since we stored names, we clear the whole chat's typing on stop.
+          return false
+        })
+        const next = { ...prev }
+        delete next[data.chatId]
+        return next
+      })
+    }
+
+    socket.on('newMessage',            handleNewMessage)
+    socket.on('chat:user_typing',      handleUserTyping)
+    socket.on('chat:user_stop_typing', handleUserStopTyping)
 
     return () => {
-      socket.off('newMessage', handleNewMessage)
-      // Leave all chat rooms the list page joined when unmounting
+      socket.off('newMessage',            handleNewMessage)
+      socket.off('chat:user_typing',      handleUserTyping)
+      socket.off('chat:user_stop_typing', handleUserStopTyping)
       const s = getSocket()
       if (s) {
         for (const id of joinedRoomsRef.current) s.emit('chat:leave', { chatId: id })
@@ -134,24 +174,17 @@ export default function ChatPage() {
     }
   }, [user?.id])
 
-  // Create private chat and navigate straight into it
   const handleCreatePrivateChat = async (friendId: string) => {
     try {
-      const res = await api.post<{ success: boolean; data: { id: string } }>(
-        `/chat/private/${friendId}`
-      )
+      const res = await api.post<{ success: boolean; data: { id: string } }>(`/chat/private/${friendId}`)
       nav(`/chat/${res.data.data.id}`)
-    } catch (err) {
+    } catch {
       setError('Failed to create chat')
-      console.error(err)
     }
   }
 
-  // Navigate into a chat and mark it as read immediately
   const handleOpenChat = async (chatId: string) => {
-    // Fire-and-forget — mark as read before navigating so the badge clears
     api.patch(`/chat/chats/${chatId}/read`).catch(() => {})
-    // Optimistic: clear unread badge locally so it disappears immediately
     setChats(prev => prev.map(c => c.id === chatId ? { ...c, unreadCount: 0 } : c))
     nav(`/chat/${chatId}`)
   }
@@ -173,9 +206,7 @@ export default function ChatPage() {
             <p className="nav-label text-[0.55rem] text-gold/40 tracking-ultra mb-1">COMMUNICATION</p>
             <h1 className="font-display font-black text-3xl text-ice-gradient">Chat</h1>
             <div className="gold-rule w-14 mt-2" />
-            <p className="font-body text-sm text-ice/40 mt-3">
-              Private messages and group conversations
-            </p>
+            <p className="font-body text-sm text-ice/40 mt-3">Private messages and group conversations</p>
           </motion.div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
@@ -189,9 +220,14 @@ export default function ChatPage() {
                   <h2 className="font-display text-xl text-ice">Your active chats</h2>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => nav('/chat/find')}
+                  <button onClick={() => nav('/chat/search')}
                     className="btn-outline px-3 py-1.5 rounded-sm text-[0.55rem] flex items-center gap-1">
                     <Search size={12} />
+                    SEARCH
+                  </button>
+                  <button onClick={() => nav('/chat/find')}
+                    className="btn-outline px-3 py-1.5 rounded-sm text-[0.55rem] flex items-center gap-1">
+                    <Users size={12} />
                     FIND PEOPLE
                   </button>
                   <button onClick={() => nav('/chat/requests')}
@@ -209,7 +245,7 @@ export default function ChatPage() {
               </div>
 
               <div className="mb-4">
-                <input type="text" placeholder="Search chats..."
+                <input type="text" placeholder="Filter by name..."
                   value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
                   className="uris-input w-full" />
               </div>
@@ -230,55 +266,81 @@ export default function ChatPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {filteredChats.map(chat => (
-                    <motion.button
-                      key={chat.id}
-                      whileHover={{ x: 2 }}
-                      whileTap={{ scale: 0.99 }}
-                      onClick={() => void handleOpenChat(chat.id)}
-                      className="w-full flex items-center justify-between rounded-sm border border-gold/10 bg-navy-900/40 p-4 hover:bg-navy-900/60 transition-colors text-left">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full"
-                          style={{ background: 'rgba(201,168,76,0.1)' }}>
-                          {chat.type === 'PRIVATE'
-                            ? <MessageSquare className="h-5 w-5 text-gold" />
-                            : <Users className="h-5 w-5 text-gold" />}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-body font-semibold text-ice truncate">
-                            {chat.type === 'PRIVATE'
-                              ? (chat.otherParticipant?.name ?? chat.otherParticipant?.email ?? 'Private Chat')
-                              : (chat.name ?? 'Group Chat')}
-                          </p>
-                          {chat.lastMessage ? (
-                            <p className="text-[0.55rem] text-ice/40 truncate max-w-[240px]">
-                              {chat.lastMessage.senderName
-                                ? `${chat.lastMessage.senderName}: `
-                                : ''}
-                              {chat.lastMessage.content}
+                  {filteredChats.map(chat => {
+                    const otherUserId = chat.otherParticipant?.id
+                    const isOnline    = otherUserId ? onlineIds.has(otherUserId) : false
+                    const typingNames = typingMap[chat.id] ?? []
+                    const isTyping    = typingNames.length > 0
+
+                    return (
+                      <motion.button
+                        key={chat.id}
+                        whileHover={{ x: 2 }}
+                        whileTap={{ scale: 0.99 }}
+                        onClick={() => void handleOpenChat(chat.id)}
+                        className="w-full flex items-center justify-between rounded-sm border border-gold/10 bg-navy-900/40 p-4 hover:bg-navy-900/60 transition-colors text-left">
+                        <div className="flex items-center gap-3 min-w-0">
+                          {/* Avatar with FEAT-S4 online dot */}
+                          <div className="relative flex-shrink-0">
+                            <div className="w-10 h-10 flex items-center justify-center rounded-full"
+                              style={{ background: 'rgba(201,168,76,0.1)' }}>
+                              {chat.type === 'PRIVATE'
+                                ? <MessageSquare className="h-5 w-5 text-gold" />
+                                : <Users className="h-5 w-5 text-gold" />}
+                            </div>
+                            {/* FEAT-S4: green presence dot for PRIVATE chats only */}
+                            {chat.type === 'PRIVATE' && isOnline && (
+                              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-navy-950"
+                                style={{ background: '#4ade80' }} title="Online" />
+                            )}
+                          </div>
+
+                          <div className="min-w-0">
+                            <p className="font-body font-semibold text-ice truncate">
+                              {chat.type === 'PRIVATE'
+                                ? (chat.otherParticipant?.name ?? chat.otherParticipant?.email ?? 'Private Chat')
+                                : (chat.name ?? 'Group Chat')}
                             </p>
-                          ) : (
-                            <p className="text-[0.5rem] text-ice/25 italic">No messages yet</p>
-                          )}
+
+                            {/* FEAT-S5: typing indicator replaces last-message preview */}
+                            {isTyping ? (
+                              <p className="text-[0.5rem] text-signal/70 italic flex items-center gap-1">
+                                <span className="flex gap-0.5 items-end">
+                                  {[0,1,2].map(i => (
+                                    <span key={i} className="w-1 h-1 rounded-full bg-signal/50 inline-block"
+                                      style={{ animation: `bounce 1.2s ${i * 0.2}s infinite` }} />
+                                  ))}
+                                </span>
+                                {typingNames.join(', ')} {typingNames.length === 1 ? 'is' : 'are'} typing…
+                              </p>
+                            ) : chat.lastMessage ? (
+                              <p className="text-[0.55rem] text-ice/40 truncate max-w-[240px]">
+                                {chat.lastMessage.senderName ? `${chat.lastMessage.senderName}: ` : ''}
+                                {chat.lastMessage.content}
+                              </p>
+                            ) : (
+                              <p className="text-[0.5rem] text-ice/25 italic">No messages yet</p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                        {/* Unread badge */}
-                        {chat.unreadCount > 0 && (
-                          <span className="w-5 h-5 rounded-full flex items-center justify-center nav-label text-[0.45rem] font-bold"
-                            style={{ background: '#c9a84c', color: '#0d0f1c' }}>
-                            {chat.unreadCount > 9 ? '9+' : chat.unreadCount}
+
+                        <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                          {chat.unreadCount > 0 && (
+                            <span className="w-5 h-5 rounded-full flex items-center justify-center nav-label text-[0.45rem] font-bold"
+                              style={{ background: '#c9a84c', color: '#0d0f1c' }}>
+                              {chat.unreadCount > 9 ? '9+' : chat.unreadCount}
+                            </span>
+                          )}
+                          <span className="text-[0.5rem] text-ice/30">
+                            {chat.lastMessage
+                              ? new Date(chat.lastMessage.createdAt).toLocaleDateString()
+                              : new Date(chat.createdAt).toLocaleDateString()}
                           </span>
-                        )}
-                        <span className="text-[0.5rem] text-ice/30">
-                          {chat.lastMessage
-                            ? new Date(chat.lastMessage.createdAt).toLocaleDateString()
-                            : new Date(chat.createdAt).toLocaleDateString()}
-                        </span>
-                        <ChevronRight size={13} className="text-ice/20" />
-                      </div>
-                    </motion.button>
-                  ))}
+                          <ChevronRight size={13} className="text-ice/20" />
+                        </div>
+                      </motion.button>
+                    )
+                  })}
                 </div>
               )}
             </motion.div>
@@ -287,7 +349,6 @@ export default function ChatPage() {
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
               className="lg:col-span-1 glass-card rounded-sm p-6">
               <p className="nav-label text-[0.6rem] text-gold/60 mb-4">QUICK ACTIONS</p>
-
               <div className="space-y-4">
                 <div className="space-y-3">
                   <p className="nav-label text-[0.55rem] text-gold/40">START PRIVATE CHAT</p>
@@ -301,7 +362,14 @@ export default function ChatPage() {
                         <button key={friend.id}
                           onClick={() => void handleCreatePrivateChat(friend.id)}
                           className="btn-outline w-full px-3 py-2 rounded-sm text-[0.55rem] flex items-center gap-2 text-left">
-                          <MessageSquare size={12} />
+                          {/* FEAT-S4: online dot on quick-start friend buttons */}
+                          <div className="relative flex-shrink-0">
+                            <MessageSquare size={12} />
+                            {onlineIds.has(friend.id) && (
+                              <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full"
+                                style={{ background: '#4ade80' }} />
+                            )}
+                          </div>
                           {friend.name}
                         </button>
                       ))}

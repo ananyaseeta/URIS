@@ -31,6 +31,7 @@ import ChatFindPage       from './routes/chat-find'
 import ChatRequestsPage   from './routes/chat-requests'
 import ChatViewPage       from './routes/chat-view'
 import ChatManagePage     from './routes/chat-manage'
+import ChatSearchPage     from './routes/chat-search'
 import { useAuthStore, selectIsAuthenticated, selectIsAdmin } from './store/authStore'
 import { useAlertStore } from './store/alertStore'
 import { ROLES } from './constants/roles'
@@ -111,6 +112,8 @@ export default function App() {
             element={<ProtectedRoute><ChatFindPage /></ProtectedRoute>} />
           <Route path="/chat/requests"
             element={<ProtectedRoute><ChatRequestsPage /></ProtectedRoute>} />
+          <Route path="/chat/search"
+            element={<ProtectedRoute><ChatSearchPage /></ProtectedRoute>} />
           <Route path="/chat/:chatId"
             element={<ProtectedRoute><ChatViewPage /></ProtectedRoute>} />
           <Route path="/chat/:chatId/manage"

@@ -464,7 +464,13 @@ async function getChats(req, res, next) {
       return bTime - aTime;
     });
 
-    return ok(res, chatsWithLastMessage, 'Chats retrieved');
+    // FEAT-S4: attach the set of currently-online participant userIds so the
+    // frontend can render presence dots without a separate API call.
+    const allParticipantIds = [...new Set(chats.flatMap(c => c.participants.map(p => p.userId)))];
+    const { getOnlineUserIds } = require('../services/realtimeEngine');
+    const onlineUserIds = getOnlineUserIds(allParticipantIds);
+
+    return ok(res, { chats: chatsWithLastMessage, onlineUserIds }, 'Chats retrieved');
   } catch (err) {
     next(err);
   }
@@ -647,7 +653,7 @@ async function getMessages(req, res, next) {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const [messages, total] = await Promise.all([
+    const [messages, total, participants] = await Promise.all([
       prisma.message.findMany({
         where: { chatId },
         include: {
@@ -667,11 +673,25 @@ async function getMessages(req, res, next) {
         take: parseInt(limit),
       }),
       prisma.message.count({ where: { chatId } }),
+      // Fetch all participants' lastReadAt for read receipt computation
+      prisma.chatParticipant.findMany({
+        where:  { chatId },
+        select: { userId: true, lastReadAt: true },
+      }),
     ]);
+
+    // Build userId → lastReadAt map for the frontend tick logic
+    const participantReadMap = Object.fromEntries(
+      participants.map(p => [p.userId, p.lastReadAt ? p.lastReadAt.toISOString() : null])
+    );
 
     return ok(res, {
       messages,
       pagination: { total, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(total / parseInt(limit)) },
+      // Per-participant lastReadAt map — keyed by userId.
+      // The frontend uses this to determine the seen-by status of each message:
+      // a message is seen by participant X if message.createdAt <= lastReadAt[X].
+      participantReadMap,
     }, 'Messages retrieved');
   } catch (err) {
     next(err);
@@ -703,6 +723,19 @@ async function sendMessage(req, res, next) {
 
     if (!chat) {
       return notFound(res, 'Chat not found or access denied');
+    }
+
+    // FEAT-S2: reject the message if any participant in this chat has blocked the sender
+    const blockExists = await prisma.userBlock.findFirst({
+      where: {
+        blockedId:  req.user.id,           // sender is the blocked party
+        blocker: {
+          chats: { some: { chatId } },     // and the blocker is in this chat
+        },
+      },
+    });
+    if (blockExists) {
+      return forbidden(res, 'You cannot send messages in this conversation');
     }
 
     const message = await prisma.message.create({
@@ -926,6 +959,7 @@ async function deleteMessage(req, res, next) {
  * PATCH /chat/chats/:chatId/read
  * Mark a chat as read by updating the current user's lastReadAt timestamp.
  * Called when the user opens a conversation. Resets the unread badge.
+ * Broadcasts chat:read to the room so other participants' tick indicators update.
  */
 async function markChatRead(req, res, next) {
   try {
@@ -941,10 +975,21 @@ async function markChatRead(req, res, next) {
       return notFound(res, 'Chat not found or access denied');
     }
 
+    const now = new Date();
     await prisma.chatParticipant.update({
       where: { chatId_userId: { chatId, userId: req.user.id } },
-      data:  { lastReadAt: new Date() },
+      data:  { lastReadAt: now },
     });
+
+    // Broadcast so senders in the room see their tick update to "seen"
+    const io = require('../services/realtimeEngine').getIO();
+    if (io) {
+      io.to(`chat:${chatId}`).emit('chat:read', {
+        chatId,
+        userId:     req.user.id,
+        lastReadAt: now.toISOString(),
+      });
+    }
 
     return ok(res, null, 'Chat marked as read');
   } catch (err) {
@@ -1220,6 +1265,131 @@ async function leaveGroupChat(req, res, next) {
   }
 }
 
+// ── Block / Unblock ────────────────────────────────────────────────────────────
+
+/**
+ * POST /chat/blocks/:userId
+ * Block a user. Idempotent — blocking an already-blocked user is a no-op.
+ * Once blocked:
+ *   - Their messages are hidden in the sender's view (frontend filters them)
+ *   - sendMessage rejects any message from a blocked user into this chat
+ */
+async function blockUser(req, res, next) {
+  try {
+    const { userId: blockedId } = req.params;
+
+    if (blockedId === req.user.id) {
+      return validationError(res, 'Cannot block yourself');
+    }
+
+    // Verify target user exists
+    const target = await prisma.user.findUnique({
+      where: { id: blockedId },
+      select: { id: true },
+    });
+    if (!target) return notFound(res, 'User not found');
+
+    // Upsert — if already blocked, this is a no-op
+    await prisma.userBlock.upsert({
+      where:  { blockerId_blockedId: { blockerId: req.user.id, blockedId } },
+      update: {},
+      create: { blockerId: req.user.id, blockedId },
+    });
+
+    logger.info({ blockerId: req.user.id, blockedId }, 'User blocked');
+    return ok(res, null, 'User blocked');
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * DELETE /chat/blocks/:userId
+ * Unblock a user.
+ */
+async function unblockUser(req, res, next) {
+  try {
+    const { userId: blockedId } = req.params;
+
+    await prisma.userBlock.deleteMany({
+      where: { blockerId: req.user.id, blockedId },
+    });
+
+    logger.info({ blockerId: req.user.id, blockedId }, 'User unblocked');
+    return ok(res, null, 'User unblocked');
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /chat/blocks
+ * Get the current user's block list (IDs they have blocked).
+ */
+async function getBlockList(req, res, next) {
+  try {
+    const blocks = await prisma.userBlock.findMany({
+      where: { blockerId: req.user.id },
+      select: {
+        blockedId: true,
+        createdAt: true,
+        blocked: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return ok(res, blocks, 'Block list retrieved');
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ── Cross-conversation search ──────────────────────────────────────────────────
+
+/**
+ * GET /chat/search?q=keyword
+ * Search messages across ALL chats the current user participates in.
+ * Returns up to 50 results ordered by most recent, grouped by chat.
+ */
+async function searchAllMessages(req, res, next) {
+  try {
+    const { q } = req.query;
+
+    if (!q || !q.trim()) {
+      return validationError(res, 'Search query is required');
+    }
+
+    // Get all chat IDs this user participates in
+    const participations = await prisma.chatParticipant.findMany({
+      where:  { userId: req.user.id },
+      select: { chatId: true },
+    });
+    const chatIds = participations.map(p => p.chatId);
+
+    if (chatIds.length === 0) {
+      return ok(res, { results: [], query: q.trim(), count: 0 }, 'No chats to search');
+    }
+
+    const messages = await prisma.message.findMany({
+      where: {
+        chatId:    { in: chatIds },
+        isDeleted: false,
+        content:   { contains: q.trim(), mode: 'insensitive' },
+      },
+      include: {
+        sender: { select: { id: true, name: true } },
+        chat:   { select: { id: true, type: true, name: true } },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 50,
+    });
+
+    return ok(res, { results: messages, query: q.trim(), count: messages.length }, 'Search results');
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getUsers,
   getFriendRequests,
@@ -1241,4 +1411,8 @@ module.exports = {
   addGroupParticipant,
   removeGroupParticipant,
   leaveGroupChat,
+  blockUser,
+  unblockUser,
+  getBlockList,
+  searchAllMessages,
 };

@@ -4,7 +4,7 @@ import { useAuthStore, selectToken, selectUser } from '../store/authStore'
 import Sidebar from '../components/Sidebar'
 import Starfield from '../components/Starfield'
 import api from '../services/api'
-import { ArrowLeft, Send, Loader2, MessageSquare, AlertTriangle, Search, X, Edit2, Trash2, Check, Settings } from 'lucide-react'
+import { ArrowLeft, Send, Loader2, MessageSquare, AlertTriangle, Search, X, Edit2, Trash2, Check, Settings, ShieldOff, Shield } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { getSocket } from '../services/socket.service'
 import { useRealtimeStore } from '../store/realtimeStore'
@@ -41,6 +41,9 @@ interface Pagination {
   pages: number
 }
 
+// participantReadMap: userId → ISO string of their lastReadAt (or null if never read)
+type ReadMap = Record<string, string | null>
+
 export default function ChatViewPage() {
   const { chatId } = useParams<{ chatId: string }>()
   const token = useAuthStore(selectToken)
@@ -49,6 +52,9 @@ export default function ChatViewPage() {
 
   const [messages, setMessages]       = useState<Message[]>([])
   const [pagination, setPagination]   = useState<Pagination | null>(null)
+  // participantReadMap tracks each participant's lastReadAt so we can compute
+  // per-message seen status without a separate read-receipt table.
+  const [readMap, setReadMap]         = useState<ReadMap>({})
   const [loading, setLoading]         = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [sending, setSending]         = useState(false)
@@ -56,6 +62,12 @@ export default function ChatViewPage() {
   const [error, setError]             = useState('')
   const [chatName, setChatName]       = useState('')
   const [chatType, setChatType]       = useState<'PRIVATE' | 'GROUP' | null>(null)
+  // FEAT-S4: online presence for the other participant in PRIVATE chats
+  const [otherUserId, setOtherUserId]         = useState<string | null>(null)
+  const [otherUserOnline, setOtherUserOnline] = useState(false)
+  // FEAT-S2: block status — true if current user has blocked the other participant
+  const [isBlocked, setIsBlocked]     = useState(false)
+  const [blockLoading, setBlockLoading] = useState(false)
   const [typingUsers, setTypingUsers] = useState<Record<string, string>>({})
 
   // ── Search state ──────────────────────────────────────────────────────────
@@ -105,14 +117,16 @@ export default function ChatViewPage() {
       if (page === 1) setLoading(true); else setLoadingMore(true)
       const res = await api.get<{
         success: boolean
-        data: { messages: Message[]; pagination: Pagination }
+        data: { messages: Message[]; pagination: Pagination; participantReadMap: ReadMap }
       }>(`/chat/chats/${chatId}/messages?page=${page}&limit=${LIMIT}`)
 
-      const { messages: msgs, pagination: pg } = res.data.data
+      const { messages: msgs, pagination: pg, participantReadMap } = res.data.data
       // Messages come back newest-first — reverse for display
       const ordered = [...msgs].reverse()
       setMessages(prev => append ? [...ordered, ...prev] : ordered)
       setPagination(pg)
+      // Always replace the read map with the freshest snapshot from the server
+      if (participantReadMap) setReadMap(participantReadMap)
 
       // MED-2: update the independent page tracker and the "has more" flag.
       // We consider there to be more pages only when the server returned a full
@@ -131,19 +145,24 @@ export default function ChatViewPage() {
   // ── Load chat name + type from chats list ─────────────────────────────────
   useEffect(() => {
     if (!chatId) return
-    api.get<{ success: boolean; data: Array<{
-      id: string
-      type: string
-      name?: string
+    api.get<{ success: boolean; data: { chats?: Array<{
+      id: string; type: string; name?: string
+      otherParticipant?: { id: string; name: string; email: string } | null
+    }>; onlineUserIds?: string[] } | Array<{
+      id: string; type: string; name?: string
       otherParticipant?: { id: string; name: string; email: string } | null
     }> }>('/chat/chats')
       .then(res => {
-        const chat = (res.data.data ?? []).find(c => c.id === chatId)
+        const raw = res.data.data
+        const chats = Array.isArray(raw) ? raw : (raw?.chats ?? [])
+        const online = Array.isArray(raw) ? [] : (raw?.onlineUserIds ?? [])
+        const chat = chats.find(c => c.id === chatId)
         if (!chat) { setChatName('Chat'); return }
         setChatType(chat.type as 'PRIVATE' | 'GROUP')
         if (chat.type === 'PRIVATE') {
-          // Use the other participant's name for private chats (BUG-M2 fix)
           setChatName(chat.otherParticipant?.name ?? chat.otherParticipant?.email ?? 'Private Chat')
+          setOtherUserId(chat.otherParticipant?.id ?? null)
+          setOtherUserOnline(online.includes(chat.otherParticipant?.id ?? ''))
         } else {
           setChatName(chat.name ?? 'Group Chat')
         }
@@ -183,6 +202,13 @@ export default function ChatViewPage() {
     const handleParticipantRemoved = (data: { chatId: string; userId: string }) => {
       if (data.chatId !== chatId) return
       if (data.userId === user?.id) nav('/chat')
+    }
+
+    // FEAT-S1: update the read map when a participant marks the chat as read,
+    // so the sender's tick indicators switch from sent → seen in real-time.
+    const handleChatRead = (data: { chatId: string; userId: string; lastReadAt: string }) => {
+      if (data.chatId !== chatId) return
+      setReadMap(prev => ({ ...prev, [data.userId]: data.lastReadAt }))
     }
     const handleNewMessage = (data: { message: Message; chatId: string }) => {
       if (data.chatId !== chatId) return
@@ -242,6 +268,7 @@ export default function ChatViewPage() {
     socket.on('chat:user_stop_typing', handleUserStopTyping)
     socket.on('chat:renamed', handleRenamed)
     socket.on('chat:participant_removed', handleParticipantRemoved)
+    socket.on('chat:read', handleChatRead)
 
     return () => {
       socket.off('connect', handleReconnect)
@@ -252,6 +279,7 @@ export default function ChatViewPage() {
       socket.off('chat:user_stop_typing', handleUserStopTyping)
       socket.off('chat:renamed', handleRenamed)
       socket.off('chat:participant_removed', handleParticipantRemoved)
+      socket.off('chat:read', handleChatRead)
       socket.emit('chat:leave', { chatId })
       // Clear any pending typing timeout
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
@@ -262,11 +290,17 @@ export default function ChatViewPage() {
   useEffect(() => {
     if (!token) { nav('/login'); return }
     void loadMessages(1, false)
-    // Mark the chat as read when the user opens it — clears the unread badge
     if (chatId) {
       api.patch(`/chat/chats/${chatId}/read`).catch(() => {})
     }
-  }, [token, nav, loadMessages, chatId])
+    // FEAT-S2: load the current user's block list to know if other participant is blocked
+    api.get<{ success: boolean; data: { blockedId: string }[] }>('/chat/blocks')
+      .then(res => {
+        const blocked = new Set((res.data.data ?? []).map((b: { blockedId: string }) => b.blockedId))
+        if (otherUserId) setIsBlocked(blocked.has(otherUserId))
+      })
+      .catch(() => {})
+  }, [token, nav, loadMessages, chatId, otherUserId])
 
   useEffect(() => {
     if (!loading) {
@@ -350,6 +384,25 @@ export default function ChatViewPage() {
     socket.emit('chat:stop_typing', { chatId })
   }
 
+  // ── FEAT-S2: Block / unblock the other participant ───────────────────────
+  const handleToggleBlock = async () => {
+    if (!otherUserId || blockLoading) return
+    setBlockLoading(true)
+    try {
+      if (isBlocked) {
+        await api.delete(`/chat/blocks/${otherUserId}`)
+        setIsBlocked(false)
+      } else {
+        await api.post(`/chat/blocks/${otherUserId}`)
+        setIsBlocked(true)
+      }
+    } catch {
+      // non-fatal — leave current state
+    } finally {
+      setBlockLoading(false)
+    }
+  }
+
   // ── Load older messages ───────────────────────────────────────────────────
   // MED-2: use loadedPageRef (client-controlled) instead of pagination.page
   // (server snapshot). hasMorePagesRef is set true only when the last fetch
@@ -357,6 +410,17 @@ export default function ChatViewPage() {
   const handleLoadMore = () => {
     if (!hasMorePagesRef.current || loadingMore) return
     void loadMessages(loadedPageRef.current + 1, true)
+  }
+
+  // FEAT-S1: derive seen status for the sender's own messages.
+  // A message is "seen" when every other participant's lastReadAt >= message.createdAt.
+  // Returns 'seen' | 'sent' — only called for messages the current user sent.
+  const getReadStatus = (msg: Message): 'seen' | 'sent' => {
+    const msgTime = new Date(msg.createdAt).getTime()
+    const others  = Object.entries(readMap).filter(([uid]) => uid !== user?.id)
+    if (others.length === 0) return 'sent'
+    const allSeen = others.every(([, ts]) => ts !== null && new Date(ts).getTime() >= msgTime)
+    return allSeen ? 'seen' : 'sent'
   }
 
   const formatTime = (iso: string) => {
@@ -390,15 +454,39 @@ export default function ChatViewPage() {
               <ArrowLeft size={14} />
             </button>
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <div className="w-8 h-8 rounded-sm flex items-center justify-center flex-shrink-0"
-                style={{ background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)' }}>
-                <MessageSquare size={13} className="text-gold" />
+              {/* Avatar — relative so the online dot can anchor to it */}
+              <div className="relative flex-shrink-0">
+                <div className="w-8 h-8 rounded-sm flex items-center justify-center"
+                  style={{ background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)' }}>
+                  <MessageSquare size={13} className="text-gold" />
+                </div>
+                {/* FEAT-S4: green online dot for PRIVATE chats when other user is connected */}
+                {chatType === 'PRIVATE' && otherUserOnline && (
+                  <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-navy-950"
+                    style={{ background: '#4ade80' }} title="Online" />
+                )}
               </div>
               <div className="min-w-0">
                 <p className="nav-label text-[0.55rem] text-gold/40 leading-none mb-0.5">CONVERSATION</p>
                 <p className="font-display font-bold text-sm text-frost/90 truncate">{chatName}</p>
               </div>
             </div>
+
+            {/* FEAT-S2: Block/unblock button — only for PRIVATE chats */}
+            {chatType === 'PRIVATE' && otherUserId && (
+              <button
+                onClick={() => void handleToggleBlock()}
+                disabled={blockLoading}
+                className="flex-shrink-0 p-2 rounded-sm transition-colors disabled:opacity-40"
+                style={isBlocked
+                  ? { background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', color: '#f87171' }
+                  : { background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.12)', color: 'rgba(184,212,240,0.4)' }
+                }
+                title={isBlocked ? 'Unblock user' : 'Block user'}>
+                {isBlocked ? <ShieldOff size={14} /> : <Shield size={14} />}
+              </button>
+            )}
+
             {/* Group manage button — only visible for GROUP chats */}
             {chatType === 'GROUP' && (
               <button
@@ -501,6 +589,17 @@ export default function ChatViewPage() {
                           {msg.editedAt && !msg.isDeleted && (
                             <span className="italic opacity-70">(edited)</span>
                           )}
+                          {/* FEAT-S1: read receipt ticks — only on sender's own messages */}
+                          {isMe && !msg.isDeleted && (() => {
+                            const status = getReadStatus(msg)
+                            return (
+                              <span title={status === 'seen' ? 'Seen' : 'Sent'}
+                                style={{ color: status === 'seen' ? '#c9a84c' : 'rgba(201,168,76,0.35)', letterSpacing: '-0.05em' }}>
+                                {status === 'seen' ? '✓✓' : '✓'}
+                              </span>
+                            )
+                          })()}
+                        </p>
                         </p>
                       </div>
                     </motion.div>

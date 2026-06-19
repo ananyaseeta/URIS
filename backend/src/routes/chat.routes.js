@@ -21,6 +21,10 @@ const {
   addGroupParticipant,
   removeGroupParticipant,
   leaveGroupChat,
+  blockUser,
+  unblockUser,
+  getBlockList,
+  searchAllMessages,
 } = require('../controllers/chat.controller');
 const { verifyToken } = require('../middleware/auth.middleware');
 const { validate }    = require('../middleware/validate.middleware');
@@ -64,5 +68,13 @@ router.patch('/chats/:chatId/name',                   verifyToken, renameGroupCh
 router.post('/chats/:chatId/participants',             verifyToken, addGroupParticipant);
 router.delete('/chats/:chatId/participants/:userId',   verifyToken, removeGroupParticipant);
 router.post('/chats/:chatId/leave',                   verifyToken, leaveGroupChat);
+
+// ── Block / unblock (FEAT-S2) ─────────────────────────────────────────────────
+router.get('/blocks',          verifyToken, getBlockList);
+router.post('/blocks/:userId', verifyToken, blockUser);
+router.delete('/blocks/:userId', verifyToken, unblockUser);
+
+// ── Cross-conversation search (FEAT-S3) ───────────────────────────────────────
+router.get('/search', verifyToken, searchAllMessages);
 
 module.exports = router;

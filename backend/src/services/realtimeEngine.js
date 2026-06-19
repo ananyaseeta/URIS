@@ -673,10 +673,23 @@ function reroomSocket(userId, newRole, internId = null) {
   }
 }
 
+/**
+ * Returns an array of userIds (from the provided list) that currently
+ * have at least one active socket connection (i.e. they are online).
+ * Used by getChats to attach presence dots to the chat list.
+ */
+function getOnlineUserIds(userIds) {
+  return userIds.filter(id => {
+    const sockets = _userSockets.get(id);
+    return sockets && sockets.size > 0;
+  });
+}
+
 module.exports = {
   init,
   getIO,
   reroomSocket,
+  getOnlineUserIds,
   getOfflineParticipants,
   emitAlertUpdate,
   emitWorkloadUpdate,

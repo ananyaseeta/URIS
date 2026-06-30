@@ -37,6 +37,8 @@ const webhookRoutes      = require('./src/routes/webhook.routes');
 const supportRoutes      = require('./src/routes/support.routes');
 const archiveRoutes      = require('./src/routes/archive.routes');
 const operationalRoutes  = require('./src/routes/operational.routes');
+const presenceRoutes     = require('./src/routes/presence.routes');
+const delegationRoutes   = require('./src/routes/delegation.routes');
 const { errorHandler }   = require('./src/middleware/error.middleware');
 const { ipBlockMiddleware } = require('./src/middleware/ipBlock.middleware');
 
@@ -152,6 +154,8 @@ app.use('/profile',      profileRoutes);
 app.use('/google',       googleRoutes);   // Google data: /google/worklog, /google/calendar
 app.use('/document',     documentRoutes); // Document submission: /document/submit, /document/mine, /document/lead/:internId
 app.use('/chat',         chatRoutes);     // Chat system: /chat/friend-requests, /chat/chats, /chat/messages
+app.use('/presence',     presenceRoutes);
+app.use('/delegation',   delegationRoutes); // Virtual presence: /presence/check-in, /presence/check-out, /presence/window
 // Serve uploaded profile pictures — /tmp in production (Render), local in dev
 const uploadDir = process.env.UPLOAD_DIR
   ? path.resolve(process.env.UPLOAD_DIR)

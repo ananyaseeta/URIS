@@ -37,6 +37,7 @@ const {
   getIntegrationIntelligence,
   getUnifiedIntelligence,
   getOpenProjectIntelligence,
+  getPresenceAnalytics,
 } = require('../controllers/analytics.controller');
 const { verifyToken, requireRole } = require('../middleware/auth.middleware');
 const { ROLES } = require('../constants/roles');
@@ -67,5 +68,6 @@ router.get('/performance-trends',           ...auth, getPerformanceTrends);
 router.get('/integration-intelligence',     ...auth, getIntegrationIntelligence);
 router.get('/unified',                      ...auth, getUnifiedIntelligence);
 router.get('/openproject-intelligence',     ...auth, getOpenProjectIntelligence);
+router.get('/presence',                     ...auth, getPresenceAnalytics);
 
 module.exports = router;

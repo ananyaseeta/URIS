@@ -1,32 +1,135 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LayoutDashboard, CalendarDays, ClipboardList, Star, Users, Bell, LogOut, ChevronRight, ShieldCheck, ScrollText, TrendingUp, Shield, Menu, X, UserCircle, Settings, Wifi, MessageSquare, AlertTriangle } from 'lucide-react'
+import { LayoutDashboard, CalendarDays, ClipboardList, Star, Users, Bell, LogOut, ChevronRight, ShieldCheck, ScrollText, TrendingUp, Shield, Menu, X, UserCircle, Settings, Wifi, MessageSquare, AlertTriangle, BookOpen } from 'lucide-react'
 import { useAuthStore, selectUser, selectIsAdmin } from '../store/authStore'
 import { useAlertStore } from '../store/alertStore'
 import { useRealtimeStore } from '../store/realtimeStore'
 import TeamSwitcher from './TeamSwitcher'
 
 import { getPermissions } from '../utils/permissions'
+import { getPendingUsers } from '../services/admin.service'
 
-const allItems = [
-  { icon: LayoutDashboard, label: 'Overview',      to: '/dashboard' },
-  { icon: CalendarDays,    label: 'Availability',  to: '/availability' },
-  { icon: ClipboardList,   label: 'Tasks',         to: '/tasks' },
-  { icon: Bell,            label: 'Notifications', to: '/notifications' },
-  { icon: MessageSquare,   label: 'Chat',          to: '/chat' },
-  { icon: Star,            label: 'Reviews',       to: '/review' },
-  { icon: Users,           label: 'Team',          to: '/team' },
-  { icon: AlertTriangle,   label: 'Alerts',        to: '/alerts' },
-  { icon: ShieldCheck,     label: 'Admin',         to: '/admin' },
-  { icon: TrendingUp,      label: 'Intelligence',  to: '/intelligence' },
-  { icon: Shield,          label: 'Governance',    to: '/governance' },
-  { icon: ScrollText,      label: 'Audit Logs',    to: '/audit-logs' },
-  { icon: Wifi,            label: 'Integrations',  to: '/integrations' },
-  { icon: LayoutDashboard, label: 'Portfolio',     to: '/portfolio-edit' },
-  { icon: UserCircle,      label: 'Profile',       to: '/profile' },
-  { icon: Settings,        label: 'Settings',      to: '/settings' },
-]
+// ── Nav item definitions ───────────────────────────────────────────────────────
+// Labels are user-goal-facing (not backend/system names).
+// Icons are unique per item — Portfolio uses BookOpen, not LayoutDashboard.
+// Order here is the FALLBACK order; role-specific ordering is applied below.
+
+const NAV_ITEM_MAP: Record<string, { icon: React.ElementType; label: string }> = {
+  '/dashboard':     { icon: LayoutDashboard, label: 'Dashboard'        },
+  '/availability':  { icon: CalendarDays,    label: 'My Schedule'      },
+  '/tasks':         { icon: ClipboardList,   label: 'Tasks'            },
+  '/notifications': { icon: Bell,            label: 'Notifications'    },
+  '/chat':          { icon: MessageSquare,   label: 'Chat'             },
+  '/review':        { icon: Star,            label: 'Reviews'          },
+  '/team':          { icon: Users,           label: 'Team'             },
+  '/alerts':        { icon: AlertTriangle,   label: 'Alerts'           },
+  '/admin':         { icon: ShieldCheck,     label: 'Controls'         },
+  '/intelligence':  { icon: TrendingUp,      label: 'Intelligence'     }, // overridden per role below
+  '/governance':    { icon: Shield,          label: 'Rules & Policies' },
+  '/audit-logs':    { icon: ScrollText,      label: 'Activity Log'     },
+  '/integrations':  { icon: Wifi,            label: 'Integrations'     },
+  '/portfolio-edit':{ icon: BookOpen,        label: 'My Portfolio'     },
+  '/profile':       { icon: UserCircle,      label: 'Profile'          },
+  '/settings':      { icon: Settings,        label: 'Settings'         },
+}
+
+// Route order per role — drives the menu sequence.
+// Roles not listed fall back to the permissions modules array order.
+const ROLE_ORDER: Record<string, string[]> = {
+  // Intern
+  technical_intern: [
+    '/dashboard', '/availability', '/tasks', '/notifications',
+    '/chat', '/portfolio-edit', '/profile', '/settings',
+  ],
+  operations_intern: [
+    '/dashboard', '/availability', '/tasks', '/notifications',
+    '/chat', '/portfolio-edit', '/profile', '/settings',
+  ],
+  research_intern: [
+    '/dashboard', '/availability', '/tasks', '/notifications',
+    '/chat', '/portfolio-edit', '/profile', '/settings',
+  ],
+  orenda_member: [
+    '/dashboard', '/availability', '/tasks', '/notifications',
+    '/chat', '/portfolio-edit', '/profile', '/settings',
+  ],
+
+  // Leads — Team promoted above Tasks per audit recommendation
+  technical_lead: [
+    '/dashboard', '/team', '/tasks', '/review',
+    '/alerts', '/intelligence', '/chat', '/profile', '/settings',
+  ],
+  research_lead: [
+    '/dashboard', '/team', '/tasks', '/review',
+    '/alerts', '/intelligence', '/chat', '/profile', '/settings',
+  ],
+  operations_lead: [
+    '/dashboard', '/team', '/tasks', '/alerts',
+    '/intelligence', '/chat', '/profile', '/settings',
+  ],
+  operations_program_manager: [
+    '/dashboard', '/team', '/tasks', '/review',
+    '/alerts', '/intelligence', '/chat', '/profile', '/settings',
+  ],
+  observer_team_lead: [
+    '/dashboard', '/team', '/tasks', '/alerts',
+    '/chat', '/profile', '/settings',
+  ],
+  collaborator_lead: [
+    '/dashboard', '/team', '/tasks', '/review',
+    '/alerts', '/chat', '/profile', '/settings',
+  ],
+
+  // Core Admin
+  core_admin: [
+    '/dashboard', '/admin', '/tasks', '/alerts',
+    '/team', '/intelligence', '/governance', '/audit-logs',
+    '/integrations', '/chat', '/profile', '/settings',
+  ],
+}
+
+// Per-role label overrides (Intelligence shows differently for leads vs admin)
+const ROLE_LABEL_OVERRIDES: Record<string, Partial<Record<string, string>>> = {
+  core_admin: {
+    '/intelligence': 'System Health',
+  },
+  technical_lead:           { '/intelligence': 'Team Health' },
+  research_lead:            { '/intelligence': 'Team Health' },
+  operations_lead:          { '/intelligence': 'Team Health' },
+  operations_program_manager: { '/intelligence': 'Team Health' },
+  observer_team_lead:       { '/intelligence': 'Team Health' },
+  collaborator_lead:        { '/intelligence': 'Team Health' },
+}
+
+/** Build the ordered, visible nav items for the current user's role. */
+function buildNavItems(role: string, allowedModules: string[]) {
+  const allowed = new Set(allowedModules)
+  const order   = ROLE_ORDER[role] ?? allowedModules
+  const labelOverrides = ROLE_LABEL_OVERRIDES[role] ?? {}
+
+  // Ordered items that are both in the role's preferred order AND allowed by permissions
+  const ordered = order
+    .filter(route => allowed.has(route))
+    .map(route => {
+      const base = NAV_ITEM_MAP[route]
+      return base
+        ? { to: route, icon: base.icon, label: labelOverrides[route] ?? base.label }
+        : null
+    })
+    .filter(Boolean) as { to: string; icon: React.ElementType; label: string }[]
+
+  // Append any allowed routes not covered by the explicit ordering (safety net)
+  const orderedSet = new Set(ordered.map(i => i.to))
+  for (const route of allowedModules) {
+    if (!orderedSet.has(route) && NAV_ITEM_MAP[route]) {
+      const base = NAV_ITEM_MAP[route]
+      ordered.push({ to: route, icon: base.icon, label: labelOverrides[route] ?? base.label })
+    }
+  }
+
+  return ordered
+}
 
 export default function Sidebar() {
   const loc     = useLocation()
@@ -37,6 +140,16 @@ export default function Sidebar() {
   const [mobileOpen, setMobileOpen]   = useState(false)
   const [desktopOpen, setDesktopOpen] = useState(true)
 
+  // Pending approval badge — fetched once on mount for CORE_ADMIN only.
+  // Non-admin roles never hit this endpoint; the result stays 0.
+  const [pendingCount, setPendingCount] = useState(0)
+  useEffect(() => {
+    if (user?.role !== 'core_admin') return
+    getPendingUsers()
+      .then(users => setPendingCount(users.length))
+      .catch(() => {}) // non-fatal — badge simply won't show
+  }, [user?.role])
+
   // Read unread count from shared store — no local fetch
   const unread = useAlertStore(s => s.unread)
 
@@ -45,7 +158,7 @@ export default function Sidebar() {
   const isLive = socketStatus === 'connected'
 
   const permissions = getPermissions(user?.role || '')
-  const items = allItems.filter(i => permissions.modules.includes(i.to))
+  const items = buildNavItems(user?.role || '', permissions.modules)
 
   const navItems = (
     <nav className="px-2 space-y-0.5">
@@ -53,6 +166,8 @@ export default function Sidebar() {
         const active    = loc.pathname === item.to
         const showBadge = (item.to === '/notifications' && !isAdmin && unread > 0)
                        || (item.to === '/alerts' && isAdmin && unread > 0)
+        // Pending approval badge on Controls (/admin) — CORE_ADMIN only
+        const showApprovalBadge = item.to === '/admin' && pendingCount > 0
         // Live pulse dot on Intelligence when socket is connected
         const showLiveDot = item.to === '/intelligence' && isLive
         // Critical alert pulse on Alerts/Notifications
@@ -69,7 +184,15 @@ export default function Sidebar() {
                   {unread > 9 ? '9+' : unread}
                 </motion.span>
               )}
-              {showLiveDot && !showBadge && (
+              {showApprovalBadge && !showBadge && (
+                <motion.span key={pendingCount} initial={{ scale: 0.5 }} animate={{ scale: 1 }}
+                  className="ml-auto flex items-center justify-center min-w-[16px] h-4 px-0.5 rounded-full font-bold text-[0.46rem]"
+                  style={{ background: '#f87171', color: '#fff', boxShadow: '0 0 6px #f8717166' }}
+                  title={`${pendingCount} pending approval${pendingCount !== 1 ? 's' : ''}`}>
+                  {pendingCount > 9 ? '9+' : pendingCount}
+                </motion.span>
+              )}
+              {showLiveDot && !showBadge && !showApprovalBadge && (
                 <motion.span
                   animate={{ opacity: [1, 0.3, 1] }}
                   transition={{ duration: 1.5, repeat: Infinity }}
@@ -78,7 +201,7 @@ export default function Sidebar() {
                   title="Live"
                 />
               )}
-              {active && !showBadge && !showLiveDot && (
+              {active && !showBadge && !showLiveDot && !showApprovalBadge && (
                 <ChevronRight size={9} style={{ marginLeft: 'auto', color: 'rgba(201,168,76,0.5)' }} />
               )}
             </Link>

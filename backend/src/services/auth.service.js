@@ -16,13 +16,28 @@ if (!process.env.JWT_SECRET) {
 // ── Register ──────────────────────────────────────────────────────────────────
 
 async function register({ name, email, password, role, dateOfBirth, joiningDate, gdocUrl, profilePictureUrl }) {
-  // @stemonef.org emails are always CORE_ADMIN, active immediately — no approval needed
+  // Only official@stemonef.org is CORE_ADMIN with immediate active status.
+  // All other @stemonef.org addresses are treated as normal registrations —
+  // they receive whatever role they provide and start as pending.
+  const CORE_ADMIN_EMAIL = 'official@stemonef.org';
+  const isCoreAdminEmail = email.toLowerCase() === CORE_ADMIN_EMAIL;
   const ADMIN_DOMAIN = '@stemonef.org';
   const isAdminDomain = email.toLowerCase().endsWith(ADMIN_DOMAIN);
 
   let prismaRole;
-  if (isAdminDomain) {
+  if (isCoreAdminEmail) {
+    // Hard-assign CORE_ADMIN only for the one designated super-admin address.
     prismaRole = 'CORE_ADMIN';
+  } else if (isAdminDomain) {
+    // Other @stemonef.org staff: honour the role they supply (e.g. OPERATIONS_LEAD,
+    // RESEARCH_LEAD, OPERATIONS_PROGRAM_MANAGER). They are activated immediately
+    // but do NOT receive CORE_ADMIN privileges.
+    prismaRole = normalizeRole(role ?? 'technical_intern');
+    if (!prismaRole) {
+      const err = new Error(`Invalid role "${role}". Please provide a valid role.`);
+      err.status = 400;
+      throw err;
+    }
   } else {
     prismaRole = normalizeRole(role ?? 'intern');
     if (!prismaRole) {
@@ -49,8 +64,9 @@ async function register({ name, email, password, role, dateOfBirth, joiningDate,
 
   const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
-  // @stemonef.org admins are active immediately; all others start as pending
-  const status = isAdminDomain ? 'active' : 'pending';
+  // official@stemonef.org and all other @stemonef.org staff are active immediately.
+  // Non-stemonef registrations start as pending (require admin approval).
+  const status = (isCoreAdminEmail || isAdminDomain) ? 'active' : 'pending';
 
   const displayName = (typeof name === 'string' && name.trim())
     ? name.trim()
@@ -100,11 +116,12 @@ async function register({ name, email, password, role, dateOfBirth, joiningDate,
     });
   }
 
-  // @stemonef.org admins get a token immediately and are redirected to dashboard.
+  // @stemonef.org staff (official@ and all other domain addresses) are active
+  // immediately and receive a token on registration.
   // All other registrations are pending approval — no token issued.
-  if (isAdminDomain) {
+  if (isCoreAdminEmail || isAdminDomain) {
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      { id: user.id, email: user.email, role: user.role, internId: null },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '1d' }
     );
@@ -164,7 +181,12 @@ async function checkAndAutoBlockIP(ip) {
 }
 
 async function login({ email, password, ip = '0.0.0.0' }) {
-  const user = await prisma.user.findUnique({ where: { email } });
+  // Also fetch the linked Intern record id so it can be embedded in the JWT.
+  // The realtimeEngine uses internId to place interns in their personal socket room.
+  const user = await prisma.user.findUnique({
+    where: { email },
+    include: { intern: { select: { id: true } } },
+  });
 
   const invalidErr = new Error('Invalid email or password.');
   invalidErr.status = 401;
@@ -197,7 +219,7 @@ async function login({ email, password, ip = '0.0.0.0' }) {
   }
 
   const token = jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
+    { id: user.id, email: user.email, role: user.role, internId: user.intern?.id ?? null, name: user.name || null },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '1d' }
   );

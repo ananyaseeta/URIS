@@ -98,15 +98,15 @@ function IntegrationCard({ integration, index }: { integration: IntegrationInfo;
       <div className="mb-4 p-3 rounded-sm"
         style={{ background: 'rgba(7,8,15,0.5)', border: '1px solid rgba(201,168,76,0.08)' }}>
         <p className="nav-label text-[0.48rem] mb-1" style={{ color: `${GOLD}66` }}>STATUS NOTE</p>
-        <p className="font-body text-xs" style={{ color: ICE }}>{integration.notes}</p>
+        <p className="font-body text-xs" style={{ color: ICE }}>{integration.health ?? integration.notes}</p>
       </div>
 
       {/* Env + operational indicators */}
       <div className="flex items-center gap-3 mb-4">
         <div className="flex items-center gap-1.5">
           <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-            style={{ background: integration.envOk ? GREEN : RED }} />
-          <span className="nav-label text-[0.48rem]" style={{ color: integration.envOk ? GREEN : RED }}>
+            style={{ background: (integration.configured ?? integration.envOk) ? GREEN : RED }} />
+          <span className="nav-label text-[0.48rem]" style={{ color: (integration.configured ?? integration.envOk) ? GREEN : RED }}>
             ENV VARS
           </span>
         </div>
@@ -129,7 +129,7 @@ function IntegrationCard({ integration, index }: { integration: IntegrationInfo;
       <div>
         <p className="nav-label text-[0.48rem] mb-2" style={{ color: `${GOLD}55` }}>FEATURES</p>
         <div className="flex flex-wrap gap-1.5">
-          {integration.features.map(f => (
+          {(integration.powers ?? integration.features ?? []).map(f => (
             <span key={f} className="nav-label text-[0.45rem] px-2 py-0.5 rounded-sm"
               style={{ background: 'rgba(184,212,240,0.05)', border: '1px solid rgba(184,212,240,0.1)', color: ICE_DIM }}>
               {f}
@@ -361,8 +361,8 @@ export default function Integrations() {
 
   const connectedCount  = data?.integrations.filter(i => i.status === 'connected').length ?? 0
   const totalCount      = data?.integrations.length ?? 0
-  const uptimeHours     = data ? Math.floor(data.uptime / 3600) : 0
-  const uptimeMins      = data ? Math.floor((data.uptime % 3600) / 60) : 0
+  // uptime comes back as a pre-formatted string (e.g. "2h 15m 30s") from the backend
+  const uptimeDisplay   = typeof data?.uptime === 'string' ? data.uptime : data ? `${Math.floor((data.uptime as number) / 3600)}h ${Math.floor(((data.uptime as number) % 3600) / 60)}m` : '—'
 
   return (
     <div className="min-h-screen bg-navy-950 text-frost relative overflow-hidden">
@@ -425,7 +425,7 @@ export default function Integrations() {
                   transition={{ delay: 0.1 }} className="glass-card rounded-sm p-4">
                   <p className="nav-label text-[0.5rem] mb-1" style={{ color: ICE_DIM }}>UPTIME</p>
                   <p className="font-display font-black text-2xl" style={{ color: GOLD }}>
-                    {uptimeHours}h<span className="text-sm font-normal ml-1" style={{ color: ICE_DIM }}>{uptimeMins}m</span>
+                    {uptimeDisplay}
                   </p>
                 </motion.div>
 
@@ -495,7 +495,7 @@ export default function Integrations() {
               {/* Timestamp footer */}
               <p className="text-center nav-label text-[0.48rem] mt-6" style={{ color: 'rgba(184,212,240,0.15)' }}>
                 <Clock size={9} className="inline mr-1" />
-                Data as of {new Date(data.timestamp).toLocaleString('en-GB')} · Uptime {uptimeHours}h {uptimeMins}m
+                Data as of {new Date(data.timestamp).toLocaleString('en-GB')} · Uptime {uptimeDisplay}
               </p>
             </>
           )}

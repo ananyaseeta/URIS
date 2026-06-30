@@ -24,7 +24,7 @@ export default function Login() {
       const res = await authAPI.login(email, password)
       const { token, user } = res.data.data as { token: string; user: { id: string; name: string; email: string; role: string } }
       login(token, user as Parameters<typeof login>[1])
-      navigate(user.role.includes('intern') ? '/availability' : '/dashboard')
+      navigate('/dashboard')
     } catch (err: unknown) {
       setError(extractErrorMessage(err, 'Invalid credentials. Please try again.'))
     } finally {
@@ -71,14 +71,16 @@ export default function Login() {
             <div>
               <label className="nav-label text-[0.6rem] text-gold/60 block mb-2">EMAIL ADDRESS</label>
               <input type="email" className="uris-input" placeholder="you@company.com"
-                value={email} onChange={e => setEmail(e.target.value)} required />
+                value={email} onChange={e => { setEmail(e.target.value); setError(''); }}
+                disabled={loading} required />
             </div>
             <div>
               <label className="nav-label text-[0.6rem] text-gold/60 block mb-2">PASSWORD</label>
               <div className="relative">
                 <input type={showPw ? 'text' : 'password'} className="uris-input pr-10" placeholder="••••••••"
-                  value={password} onChange={e => setPassword(e.target.value)} required />
-                <button type="button" onClick={() => setShowPw(!showPw)}
+                  value={password} onChange={e => { setPassword(e.target.value); setError(''); }}
+                  disabled={loading} required />
+                <button type="button" onClick={() => setShowPw(!showPw)} disabled={loading}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-ice/30 hover:text-gold transition-colors">
                   {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
@@ -93,9 +95,9 @@ export default function Login() {
               </motion.p>
             )}
 
-            <motion.button type="submit" disabled={loading}
-              whileHover={!loading ? { scale: 1.02, boxShadow: '0 8px 28px rgba(201,168,76,0.3)' } : {}}
-              whileTap={!loading ? { scale: 0.98 } : {}}
+            <motion.button type="submit" disabled={loading || !email.trim() || !password}
+              whileHover={!(loading || !email.trim() || !password) ? { scale: 1.02, boxShadow: '0 8px 28px rgba(201,168,76,0.3)' } : {}}
+              whileTap={!(loading || !email.trim() || !password) ? { scale: 0.98 } : {}}
               className="btn-gold w-full py-3 rounded-sm mt-2 disabled:opacity-50">
               {loading ? 'AUTHENTICATING...' : 'ENTER SYSTEM'}
             </motion.button>

@@ -18,6 +18,10 @@ export interface InternRow {
   skill_tags?: string[]
   college?: string
   email?: string
+  // Virtual presence fields (from /admin/overview)
+  presenceStatus?: 'ONLINE' | 'IN_SESSION' | 'AVAILABLE_SOON' | 'OFFLINE'
+  lastCheckIn?: string | null
+  todayWindow?: { availableFrom: string; availableTo: string } | null
 }
 
 export interface AlertItem {

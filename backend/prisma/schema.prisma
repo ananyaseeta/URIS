@@ -36,6 +36,9 @@ model User {
   chats               ChatParticipant[]
   messages            Message[]
   chatsCreated        Chat[]               @relation("ChatCreatedBy")
+  // Block relations
+  blocksInitiated     UserBlock[]          @relation("UserBlockBlocker")
+  blocksReceived      UserBlock[]          @relation("UserBlockBlocked")
 }
 
 model GoogleToken {
@@ -51,25 +54,27 @@ model GoogleToken {
 }
 
 model Intern {
-  id                     String             @id @default(uuid())
-  userId                 String?            @unique
-  createdAt              DateTime           @default(now())
+  id                     String               @id @default(uuid())
+  userId                 String?              @unique
+  createdAt              DateTime             @default(now())
   overrideScore          Float?
   reservedUntil          DateTime?
   gdocUrl                String?
   lastGdocReminderSentAt DateTime?
-  gdocIsStale            Boolean            @default(false)
+  gdocIsStale            Boolean              @default(false)
   gdocLastModified       DateTime?
   gdocMetaRefreshedAt    DateTime?
   availabilitySlots      AvailabilitySlot[]
   capacityScore          CapacityScore?
   credibility            CredibilityScore?
-  user                   User?              @relation(fields: [userId], references: [id])
+  user                   User?                @relation(fields: [userId], references: [id])
   digests                InternDigest[]
   reviews                Review[]
   scoreHistory           ScoreHistory[]
   syncLogs               SyncLog[]
   tasks                  Task[]
+  virtualPresence        VirtualPresence[]
+  availabilityWindows    AvailabilityWindow[]
 }
 
 model PasswordResetToken {
@@ -407,12 +412,15 @@ model Chat {
 }
 
 model ChatParticipant {
-  id        String   @id @default(uuid())
-  chatId    String
-  userId    String
-  joinedAt  DateTime @default(now())
-  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String    @id @default(uuid())
+  chatId      String
+  userId      String
+  joinedAt    DateTime  @default(now())
+  // Tracks when this participant last read the chat.
+  // Used to compute unread message counts without a separate read-receipt table.
+  lastReadAt  DateTime?
+  chat        Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([chatId, userId])
   @@index([chatId])
@@ -420,18 +428,66 @@ model ChatParticipant {
 }
 
 model Message {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   chatId    String
   senderId  String
   content   String
-  createdAt DateTime @default(now())
-  readAt    DateTime?
-  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  // Edit/delete support
+  editedAt  DateTime?           // set when sender edits; null = never edited
+  isDeleted Boolean   @default(false) // soft delete — content replaced with tombstone
+  deletedAt DateTime?           // when the message was soft-deleted
+  chat      Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender    User      @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
   @@index([chatId])
   @@index([senderId])
   @@index([createdAt])
+}
+
+// ── Virtual Presence & Availability Tracking ──────────────────────────────────
+
+model VirtualPresence {
+  id              String    @id @default(uuid())
+  internId        String
+  checkInAt       DateTime  @default(now())
+  checkOutAt      DateTime?
+  durationMinutes Int?
+  createdAt       DateTime  @default(now())
+  intern          Intern    @relation(fields: [internId], references: [id], onDelete: Cascade)
+
+  @@index([internId])
+  @@index([checkInAt])
+  @@index([internId, checkInAt])
+}
+
+model AvailabilityWindow {
+  id            String   @id @default(uuid())
+  internId      String
+  date          DateTime @db.Date
+  availableFrom DateTime @db.Time
+  availableTo   DateTime @db.Time
+  createdAt     DateTime @default(now())
+  intern        Intern   @relation(fields: [internId], references: [id], onDelete: Cascade)
+
+  @@unique([internId, date])
+  @@index([internId])
+  @@index([date])
+}
+
+// ── User Block Model ───────────────────────────────────────────────────────────
+
+model UserBlock {
+  id        String   @id @default(uuid())
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+  blocker   User     @relation("UserBlockBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("UserBlockBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
 }
 
 enum FriendRequestStatus {

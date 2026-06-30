@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Shield, TrendingUp, X, Check, UserCheck, AlertTriangle, Loader2, Clock, ShieldCheck, Trash2, Edit2, Users } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
@@ -9,6 +10,8 @@ import { overrideScore, assignTask, getAvailabilityDeadline, setAvailabilityDead
 import { updateTaskStatus } from '../services/tasks.service'
 import { extractErrorMessage } from '../services/error'
 import RoleManagementModal from '../components/RoleManagementModal'
+import { getAllUsers, changeUserRole, type AdminUser } from '../services/collaboration.service'
+import { useAuthStore, selectUser } from '../store/authStore'
 
 const DAY_OPTIONS = [
   { value: 0, label: 'Sunday' },
@@ -21,11 +24,30 @@ const DAY_OPTIONS = [
 ]
 
 export default function AdminOverview() {
+  const currentUser = useAuthStore(selectUser)
+  const isCoreAdmin = currentUser?.role === 'core_admin'
+
+  // FIX 1: read ?tab= and ?internId= from URL so Dashboard quick-action shortcuts
+  // land on the correct tab with the intern pre-selected.
+  const [searchParams] = useSearchParams()
+
   const [interns, setInterns]     = useState<InternRow[]>([])
   const [tasks, setTasks]         = useState<Task[]>([])
   const [loadingData, setLoadingData] = useState(true)
   const [dataError, setDataError] = useState('')
-  const [activeTab, setActiveTab] = useState<'override' | 'assign' | 'status' | 'deadline' | 'approvals' | 'roles' | 'interns'>('assign')
+
+  // Initialise activeTab from URL param — defaults to 'assign'
+  const validTabs = ['override', 'assign', 'status', 'deadline', 'approvals', 'roles', 'interns'] as const
+  type TabKey = typeof validTabs[number]
+  const tabParam = searchParams.get('tab') as TabKey | null
+  const [activeTab, setActiveTab] = useState<TabKey>(
+    tabParam && (validTabs as readonly string[]).includes(tabParam) ? tabParam : 'assign'
+  )
+
+  // Admin elevation panel
+  const [adminUsers, setAdminUsers]         = useState<AdminUser[]>([])
+  const [elevationLoading, setElevationLoading] = useState<string | null>(null)
+  const [elevationMsg, setElevationMsg]     = useState<{ id: string; ok: boolean; text: string } | null>(null)
 
   // Override score form
   const [overrideInternId, setOverrideInternId] = useState('')
@@ -34,8 +56,8 @@ export default function AdminOverview() {
   const [overrideLoading, setOverrideLoading]   = useState(false)
   const [overrideMsg, setOverrideMsg]           = useState<{ ok: boolean; text: string } | null>(null)
 
-  // Assign task form
-  const [assignInternId, setAssignInternId] = useState('')
+  // Assign task form — pre-fill internId from URL param if present (FIX 1)
+  const [assignInternId, setAssignInternId] = useState(() => searchParams.get('internId') ?? '')
   const [assignTaskId, setAssignTaskId]     = useState('')
   const [assignLoading, setAssignLoading]   = useState(false)
   const [assignMsg, setAssignMsg]           = useState<{ ok: boolean; text: string } | null>(null)
@@ -100,6 +122,41 @@ export default function AdminOverview() {
   useEffect(() => {
     getPendingUsers().then(setPendingUsers).catch(() => {})
   }, [])
+
+  // Load admin users for elevation panel (CORE_ADMIN only)
+  useEffect(() => {
+    if (!isCoreAdmin) return
+    getAllUsers()
+      .then(users => {
+        // Show all non-intern, non-past-employee active users EXCEPT the current core admin themselves
+        const excludedRoles = ['TECHNICAL_INTERN', 'OPERATIONS_INTERN', 'RESEARCH_INTERN', 'ORENDA_MEMBER', 'PAST_EMPLOYEE']
+        setAdminUsers(users.filter(u =>
+          !excludedRoles.includes(u.role.toUpperCase()) &&
+          u.status === 'active' &&
+          u.id !== currentUser?.id
+        ))
+      })
+      .catch(() => {})
+  }, [isCoreAdmin, currentUser?.id])
+
+  const handleElevationToggle = async (user: AdminUser) => {
+    const isCoreNow = user.role.toUpperCase() === 'CORE_ADMIN'
+    const newRole   = isCoreNow ? 'TECHNICAL_LEAD' : 'CORE_ADMIN'
+    const action    = isCoreNow ? 'demoted from Core Admin' : 'elevated to Core Admin'
+    setElevationLoading(user.id)
+    setElevationMsg(null)
+    try {
+      await changeUserRole(user.id, newRole, `${action} via Admin Elevation Panel`)
+      setAdminUsers(prev => prev.map(u =>
+        u.id === user.id ? { ...u, role: newRole } : u
+      ))
+      setElevationMsg({ id: user.id, ok: true, text: `${user.name || user.email} ${action}.` })
+    } catch (err: unknown) {
+      setElevationMsg({ id: user.id, ok: false, text: extractErrorMessage(err, 'Role change failed.') })
+    } finally {
+      setElevationLoading(null)
+    }
+  }
 
   const handleOverride = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -378,6 +435,26 @@ export default function AdminOverview() {
                       <motion.form key="assign" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }} onSubmit={handleAssign} className="space-y-4">
                         <p className="nav-label text-[0.55rem] text-gold/40 mb-3">ASSIGN TASK TO INTERN</p>
+
+                        {/* Contextual warnings when data is missing */}
+                        {interns.length === 0 && (
+                          <div className="flex items-start gap-2 p-3 rounded-sm mb-1"
+                            style={{ background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                            <AlertTriangle size={12} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                            <p className="font-body text-xs text-amber-400/80">
+                              No interns are registered yet. Add interns before assigning tasks.
+                            </p>
+                          </div>
+                        )}
+                        {tasks.length === 0 && (
+                          <div className="flex items-start gap-2 p-3 rounded-sm mb-1"
+                            style={{ background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                            <AlertTriangle size={12} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                            <p className="font-body text-xs text-amber-400/80">
+                              No tasks exist yet. Create a task in the Tasks page before assigning.
+                            </p>
+                          </div>
+                        )}
                         <div>
                           <label className="nav-label text-[0.6rem] text-gold/60 block mb-2">SELECT INTERN</label>
                           <select className="uris-input" value={assignInternId}
@@ -407,7 +484,21 @@ export default function AdminOverview() {
                     {activeTab === 'override' && (
                       <motion.form key="override" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }} onSubmit={handleOverride} className="space-y-4">
-                        <p className="nav-label text-[0.55rem] text-gold/40 mb-3">MANUAL SCORE OVERRIDE</p>
+                        <div className="mb-3">
+                          <p className="nav-label text-[0.55rem] text-gold/40">MANUAL SCORE OVERRIDE</p>
+                          <p className="font-body text-xs text-ice/30 mt-1">
+                            Use sparingly — overrides replace the computed capacity score until the next calculation cycle.
+                          </p>
+                        </div>
+                        {interns.length === 0 && (
+                          <div className="flex items-start gap-2 p-3 rounded-sm"
+                            style={{ background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                            <AlertTriangle size={12} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                            <p className="font-body text-xs text-amber-400/80">
+                              No interns found. Overrides can only be applied once interns are registered.
+                            </p>
+                          </div>
+                        )}
                         <div>
                           <label className="nav-label text-[0.6rem] text-gold/60 block mb-2">SELECT INTERN</label>
                           <select className="uris-input" value={overrideInternId}
@@ -439,7 +530,21 @@ export default function AdminOverview() {
                     {activeTab === 'status' && (
                       <motion.form key="status" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }} onSubmit={handleStatusUpdate} className="space-y-4">
-                        <p className="nav-label text-[0.55rem] text-gold/40 mb-3">UPDATE TASK STATUS</p>
+                        <div className="mb-3">
+                          <p className="nav-label text-[0.55rem] text-gold/40">UPDATE TASK STATUS</p>
+                          <p className="font-body text-xs text-ice/30 mt-1">
+                            Admin overrides an intern's self-reported progress. The intern will see the updated status immediately.
+                          </p>
+                        </div>
+                        {tasks.length === 0 && (
+                          <div className="flex items-start gap-2 p-3 rounded-sm"
+                            style={{ background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                            <AlertTriangle size={12} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                            <p className="font-body text-xs text-amber-400/80">
+                              No tasks exist yet. Create tasks in the Tasks page first.
+                            </p>
+                          </div>
+                        )}
                         <div>
                           <label className="nav-label text-[0.6rem] text-gold/60 block mb-2">SELECT TASK</label>
                           <select className="uris-input" value={statusTaskId}
@@ -486,8 +591,14 @@ export default function AdminOverview() {
 
                         {pendingUsers.length === 0 ? (
                           <div className="py-8 text-center">
-                            <Check size={20} className="text-signal mx-auto mb-2 opacity-40" />
-                            <p className="font-body text-sm text-ice/30">No pending approvals.</p>
+                            <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-3"
+                              style={{ background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)' }}>
+                              <Check size={16} className="text-signal" />
+                            </div>
+                            <p className="font-body text-sm text-ice/50 mb-1">No pending approvals.</p>
+                            <p className="font-body text-xs text-ice/25 max-w-[200px] mx-auto">
+                              New admin and lead registrations will appear here for review before access is granted.
+                            </p>
                           </div>
                         ) : (
                           <div className="space-y-3">
@@ -702,7 +813,11 @@ export default function AdminOverview() {
                         {/* Intern list */}
                         {interns.length === 0 ? (
                           <div className="py-8 text-center">
-                            <p className="font-body text-sm text-ice/30">No interns found.</p>
+                            <Users size={24} className="text-ice/20 mx-auto mb-3" />
+                            <p className="font-body text-sm text-ice/50 mb-1">No interns registered yet.</p>
+                            <p className="font-body text-xs text-ice/25 max-w-[200px] mx-auto">
+                              Interns join via the registration page. Approve their accounts in the Approvals tab to make them appear here.
+                            </p>
                           </div>
                         ) : (
                           <div className="space-y-2 max-h-96 overflow-y-auto">
@@ -769,6 +884,132 @@ export default function AdminOverview() {
             </div>
           )}
         </div>
+
+        {/* ── Admin Elevation Panel — CORE_ADMIN only ── */}
+        {isCoreAdmin && (
+          <div className="px-4 md:px-8 pb-10">
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="glass-card rounded-sm"
+              style={{ border: '1px solid rgba(96,165,250,0.18)' }}>
+
+              {/* Header */}
+              <div className="flex items-center gap-3 px-6 py-4"
+                style={{ borderBottom: '1px solid rgba(96,165,250,0.1)' }}>
+                <div className="p-1.5 rounded-sm" style={{ background: 'rgba(96,165,250,0.1)' }}>
+                  <ShieldCheck size={13} style={{ color: '#60a5fa' }} />
+                </div>
+                <div>
+                  <p className="nav-label text-[0.55rem]" style={{ color: 'rgba(96,165,250,0.6)' }}>CORE ADMIN ONLY</p>
+                  <h2 className="font-display text-base text-frost">Admin Elevation</h2>
+                </div>
+                <p className="font-body text-xs ml-auto" style={{ color: 'rgba(184,212,240,0.3)' }}>
+                  Toggle ON to grant full Core Admin access
+                </p>
+              </div>
+
+              {/* Feedback banner */}
+              <AnimatePresence>
+                {elevationMsg && (
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden' }}>
+                    <div className="mx-6 mt-4 flex items-center gap-2 p-3 rounded-sm"
+                      style={{
+                        background: elevationMsg.ok ? 'rgba(74,222,128,0.08)' : 'rgba(248,113,113,0.08)',
+                        border: `1px solid ${elevationMsg.ok ? 'rgba(74,222,128,0.25)' : 'rgba(248,113,113,0.25)'}`,
+                      }}>
+                      {elevationMsg.ok
+                        ? <Check size={12} style={{ color: '#4ade80', flexShrink: 0 }} />
+                        : <AlertTriangle size={12} style={{ color: '#f87171', flexShrink: 0 }} />}
+                      <p className="font-body text-sm" style={{ color: elevationMsg.ok ? '#4ade80' : '#f87171' }}>
+                        {elevationMsg.text}
+                      </p>
+                      <button onClick={() => setElevationMsg(null)} className="ml-auto text-ice/30 hover:text-ice/60">
+                        <X size={11} />
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Loading */}
+              {adminUsers.length === 0 && (
+                <div className="px-6 py-8 flex items-center justify-center gap-2">
+                  <Loader2 size={16} className="animate-spin text-gold" />
+                  <p className="font-body text-sm text-ice/30">Loading admin users...</p>
+                </div>
+              )}
+
+              {/* User rows */}
+              {adminUsers.length > 0 && (
+                <div className="px-6 py-2">
+                  {adminUsers.map((u, idx) => {
+                    const isCoreNow = u.role.toUpperCase() === 'CORE_ADMIN'
+                    const isToggling = elevationLoading === u.id
+                    return (
+                      <motion.div key={u.id}
+                        initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: idx * 0.05 }}
+                        className="flex items-center justify-between py-3"
+                        style={{ borderBottom: idx < adminUsers.length - 1 ? '1px solid rgba(96,165,250,0.06)' : 'none' }}>
+
+                        {/* Left — user info */}
+                        <div className="min-w-0 flex-1">
+                          <p className="font-body text-sm text-frost/90">{u.name || u.email.split('@')[0]}</p>
+                          <p className="font-mono text-[0.5rem] text-ice/35 truncate">{u.email}</p>
+                          <span className="nav-label text-[0.45rem] mt-0.5 inline-block px-1.5 py-0.5 rounded-sm"
+                            style={{
+                              background: isCoreNow ? 'rgba(96,165,250,0.12)' : 'rgba(184,212,240,0.05)',
+                              color: isCoreNow ? '#60a5fa' : 'rgba(184,212,240,0.3)',
+                            }}>
+                            {isCoreNow ? 'CORE ADMIN' : u.role.replace(/_/g, ' ')}
+                          </span>
+                        </div>
+
+                        {/* Right — CSS toggle switch */}
+                        <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+                          <span className="nav-label text-[0.48rem]"
+                            style={{ color: isCoreNow ? '#60a5fa' : 'rgba(184,212,240,0.2)' }}>
+                            {isCoreNow ? 'CORE ADMIN' : 'STANDARD'}
+                          </span>
+                          {isToggling ? (
+                            <div className="w-12 h-6 flex items-center justify-center">
+                              <Loader2 size={14} className="animate-spin" style={{ color: '#60a5fa' }} />
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => void handleElevationToggle(u)}
+                              className="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 transition-all duration-200 ease-in-out focus:outline-none"
+                              style={{
+                                backgroundColor: isCoreNow ? '#60a5fa' : 'rgba(184,212,240,0.1)',
+                                borderColor: isCoreNow ? '#60a5fa' : 'rgba(184,212,240,0.15)',
+                              }}
+                              role="switch"
+                              aria-checked={isCoreNow}>
+                              <span
+                                className="pointer-events-none inline-block h-4 w-4 rounded-full shadow transition-transform duration-200 ease-in-out"
+                                style={{
+                                  background: isCoreNow ? '#fff' : 'rgba(184,212,240,0.45)',
+                                  transform: isCoreNow ? 'translateX(22px)' : 'translateX(2px)',
+                                  marginTop: '1px',
+                                }}
+                              />
+                            </button>
+                          )}
+                        </div>
+                      </motion.div>
+                    )
+                  })}
+                </div>
+              )}
+
+              <p className="px-6 pb-4 pt-2 nav-label text-[0.45rem]" style={{ color: 'rgba(184,212,240,0.15)' }}>
+                Toggle ON gives the admin full Core Admin access immediately. All changes are logged in the Audit Trail.
+              </p>
+            </motion.div>
+          </div>
+        )}
+
       </main>
 
       {/* Role Management Modal */}

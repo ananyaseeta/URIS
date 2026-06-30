@@ -10,6 +10,10 @@ const configStore = require('../services/configStore');
 const { getCapacityLabel } = require('../services/capacityEngine');
 const { getRpiWindowStart } = require('../services/performanceEngine');
 const notificationService = require('../services/notification.service');
+// LOW-1: imported lazily below to avoid a circular-require at startup.
+// realtimeEngine depends on prisma; importing it at the top of admin.controller
+// is safe but lazy import avoids any future circular issue if the dep graph grows.
+
 
 // Default deadline: Monday at 11:00 AM
 const DEFAULT_DEADLINE = { day: 1, hour: 11, minute: 0 }; // day: 0=Sun,1=Mon,...6=Sat
@@ -139,16 +143,50 @@ async function getAdminOverview(req, res, next) {
     ];
     let alertFilter = { resolved: false, type: { in: ADMIN_ALERT_TYPES } };
     
-    // Role-based filtering for leads
-    if (req.user.role === ROLES.TECHNICAL_LEAD) {
-      // Tech leads see only TECHNICAL_INTERNs
-      internFilter = { user: { role: 'TECHNICAL_INTERN' } };
-    } else if (req.user.role === ROLES.OPERATIONS_LEAD) {
-      // Ops leads see only OPERATIONS_INTERNs
-      internFilter = { user: { role: 'OPERATIONS_INTERN' } };
-    } else if (req.user.role === ROLES.RESEARCH_LEAD) {
-      // Research leads see only RESEARCH_INTERNs
-      internFilter = { user: { role: 'RESEARCH_INTERN' } };
+    // Role-based filtering for leads — scoped to their own team members only.
+    // Previously filtered by intern role type (e.g. all TECHNICAL_INTERNs) which
+    // returned interns across all teams. Now we look up which teams the lead belongs
+    // to and only return interns who are members of those same teams.
+    if (
+      req.user.role === ROLES.TECHNICAL_LEAD ||
+      req.user.role === ROLES.RESEARCH_LEAD  ||
+      req.user.role === ROLES.OPERATIONS_LEAD
+    ) {
+      // 1. Find the teams this lead is a member of (as 'lead' role in UserTeam)
+      const leadTeams = await prisma.userTeam.findMany({
+        where: { userId: req.user.id, leftAt: null },
+        select: { teamId: true },
+      });
+      const teamIds = leadTeams.map(t => t.teamId);
+
+      if (teamIds.length === 0) {
+        // Lead has no team assignments — show nothing rather than everything
+        internFilter = { id: { in: [] } };
+      } else {
+        // 2. Find all user IDs in those teams
+        const teamMembers = await prisma.userTeam.findMany({
+          where: { teamId: { in: teamIds }, leftAt: null, userId: { not: req.user.id } },
+          select: { userId: true },
+        });
+        const memberUserIds = [...new Set(teamMembers.map(m => m.userId))];
+
+        // 3. Map to intern records (only users who have an Intern record)
+        const teamInterns = await prisma.intern.findMany({
+          where: { userId: { in: memberUserIds } },
+          select: { id: true },
+        });
+        const teamInternIds = teamInterns.map(i => i.id);
+
+        internFilter = { id: { in: teamInternIds } };
+      }
+
+      // Scope alerts to interns in this lead's teams only
+      const teamInternIdsForAlerts = internFilter.id?.in ?? [];
+      alertFilter = {
+        resolved: false,
+        type: { in: ADMIN_ALERT_TYPES },
+        internId: { in: teamInternIdsForAlerts },
+      };
     } else if (req.user.role !== ROLES.CORE_ADMIN && req.user.role !== ROLES.OPERATIONS_PROGRAM_MANAGER) {
       // Other leads/admins: filter by their assigned tasks
       const allowedTasks = await prisma.task.findMany({ where: filter, select: { id: true, internId: true } });
@@ -201,6 +239,14 @@ async function getAdminOverview(req, res, next) {
         take:    50,
       }),
     ]);
+
+    // Fetch today's presence data for all interns (non-fatal if unavailable)
+    const { getAllInternPresence } = require('../services/presenceService');
+    const { activeSet, windowMap, checkInMap } = await getAllInternPresence().catch(() => ({
+      activeSet:  new Set(),
+      windowMap:  new Map(),
+      checkInMap: new Map(),
+    }));
 
     const interns = allInterns.map(i => {
       const activeTasksList = i.tasks.filter(t => t.status === 'active');
@@ -260,6 +306,9 @@ async function getAdminOverview(req, res, next) {
         activeTasks:   activeTasksList.length,
         completedTasks: completedTasks.length,
         completionPct,
+        presenceStatus: activeSet.has(i.id) ? 'ONLINE' : windowMap.has(i.id) ? 'IN_SESSION' : 'OFFLINE',
+        lastCheckIn:   checkInMap.get(i.id) || null,
+        todayWindow:   windowMap.get(i.id)  || null,
       };
     });
 
@@ -604,7 +653,12 @@ async function changeUserRole(req, res, next) {
     const normalizedRole = normalizeRole(newRole);
     if (!normalizedRole) return validationError(res, `Invalid role "${newRole}"`);
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    // Expand select to include the linked Intern record so we can pass internId
+    // to reroomSocket — the intern room is keyed by Intern.id, not User.id.
+    const user = await prisma.user.findUnique({
+      where:  { id: userId },
+      select: { role: true, intern: { select: { id: true } } },
+    });
     if (!user) return notFound(res, 'User not found');
 
     if (user.role === normalizedRole) {
@@ -628,6 +682,11 @@ async function changeUserRole(req, res, next) {
         },
       }),
     ]);
+
+    // LOW-1: update RBAC rooms on any active socket connections for this user
+    // so the change takes effect immediately without requiring a reconnect.
+    const { reroomSocket } = require('../services/realtimeEngine');
+    reroomSocket(userId, normalizedRole, user.intern?.id ?? null);
 
     void logAction(req.user?.id ?? null, AUDIT_ACTIONS.CHANGE_USER_ROLE, AUDIT_ENTITIES.USER, userId, {
       userId,

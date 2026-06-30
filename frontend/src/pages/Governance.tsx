@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Shield, CheckCircle, X, Clock, Loader2, AlertTriangle,
   ChevronDown, ChevronUp, Key, Users, TrendingUp, Lock, Edit2, Save, RotateCcw,
-  Activity, ShieldAlert, Radio, Ban,
+  Activity, ShieldAlert, Radio, Ban, ShieldCheck,
 } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 import Starfield from '../components/Starfield'
@@ -17,6 +17,7 @@ import {
   type GovernanceUser, type RoleHistoryRecord, type AccessMatrixResponse, type SecurityOverview,
   type GovernanceIntelligenceOverview,
 } from '../services/governance.service'
+import { getDelegationList, grantDelegation, revokeDelegation, type DelegateUser } from '../services/delegation.service'
 import { extractErrorMessage } from '../services/error'
 
 const GOLD    = '#c9a84c'
@@ -26,7 +27,7 @@ const AMBER   = '#f59e0b'
 const RED     = '#f87171'
 const BLUE    = '#60a5fa'
 
-type Tab = 'approvals' | 'promotions' | 'users' | 'role-history' | 'access-matrix' | 'security' | 'permissions'
+type Tab = 'approvals' | 'promotions' | 'users' | 'role-history' | 'delegation' | 'access-matrix' | 'security' | 'permissions'
 
 const ALL_ROLES = Object.values(ROLES).filter(r => r !== 'admin' && r !== 'intern')
 
@@ -407,6 +408,163 @@ function RoleHistoryTab({ records }: { records: RoleHistoryRecord[] }) {
   )
 }
 
+// ── Core Admin Delegation Panel ───────────────────────────────────────────────
+function DelegationPanel() {
+  const [users, setUsers]         = useState<DelegateUser[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [msg, setMsg]             = useState<{ id: string; ok: boolean; text: string } | null>(null)
+
+  useEffect(() => {
+    getDelegationList()
+      .then(d => setUsers(d.users))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const handleToggle = async (user: DelegateUser) => {
+    setTogglingId(user.id)
+    setMsg(null)
+    try {
+      if (user.isDelegated) {
+        await revokeDelegation(user.id)
+        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, isDelegated: false } : u))
+        setMsg({ id: user.id, ok: true, text: `Core Admin delegation revoked from ${user.name || user.email}.` })
+      } else {
+        await grantDelegation(user.id)
+        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, isDelegated: true } : u))
+        setMsg({ id: user.id, ok: true, text: `${user.name || user.email} can now act as Core Admin.` })
+      }
+    } catch (err: unknown) {
+      setMsg({ id: user.id, ok: false, text: extractErrorMessage(err, 'Failed to update delegation.') })
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-12">
+      <Loader2 size={20} className="animate-spin" style={{ color: GOLD }} />
+    </div>
+  )
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="glass-card rounded-sm p-5" style={{ border: '1px solid rgba(96,165,250,0.15)' }}>
+        <div className="flex items-center gap-3 mb-2">
+          <div className="p-1.5 rounded-sm" style={{ background: 'rgba(96,165,250,0.1)' }}>
+            <ShieldCheck size={13} style={{ color: BLUE }} />
+          </div>
+          <div>
+            <p className="nav-label text-[0.55rem]" style={{ color: `${BLUE}88` }}>CORE ADMIN DELEGATION</p>
+            <p className="font-body text-xs" style={{ color: ICE_DIM }}>
+              Toggle ON to grant a user effective Core Admin powers. Their role stays unchanged — only their capabilities are elevated.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Global feedback */}
+      <AnimatePresence>
+        {msg && (
+          <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            className="flex items-center gap-2 p-3 rounded-sm"
+            style={{
+              background: msg.ok ? 'rgba(74,222,128,0.08)' : 'rgba(248,113,113,0.08)',
+              border: `1px solid ${msg.ok ? 'rgba(74,222,128,0.25)' : 'rgba(248,113,113,0.25)'}`,
+            }}>
+            {msg.ok
+              ? <CheckCircle size={12} style={{ color: GREEN, flexShrink: 0 }} />
+              : <AlertTriangle size={12} style={{ color: RED, flexShrink: 0 }} />}
+            <p className="font-body text-sm flex-1" style={{ color: msg.ok ? GREEN : RED }}>{msg.text}</p>
+            <button onClick={() => setMsg(null)} className="text-ice/30 hover:text-ice/60"><X size={11} /></button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* User list */}
+      {users.length === 0 ? (
+        <div className="glass-card rounded-sm p-10 text-center">
+          <p className="font-body text-sm" style={{ color: ICE_DIM }}>No admin users found.</p>
+        </div>
+      ) : (
+        <div className="glass-card rounded-sm overflow-hidden" style={{ border: '1px solid rgba(96,165,250,0.08)' }}>
+          {users.map((u, i) => {
+            const isToggling = togglingId === u.id
+            return (
+              <motion.div key={u.id}
+                initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.04 }}
+                className="flex items-center justify-between px-5 py-3.5"
+                style={{
+                  borderBottom: i < users.length - 1 ? '1px solid rgba(96,165,250,0.06)' : 'none',
+                  background: u.isDelegated ? 'rgba(96,165,250,0.04)' : 'transparent',
+                }}>
+
+                {/* User info */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-body text-sm text-frost/90">{u.name || u.email.split('@')[0]}</p>
+                    {u.isDelegated && (
+                      <span className="nav-label text-[0.44rem] px-1.5 py-0.5 rounded-full"
+                        style={{ background: 'rgba(96,165,250,0.12)', color: BLUE }}>
+                        ACTING AS CORE ADMIN
+                      </span>
+                    )}
+                  </div>
+                  <p className="font-mono text-[0.5rem] text-ice/30 mt-0.5 truncate">{u.email}</p>
+                  <span className="nav-label text-[0.44rem] mt-0.5 inline-block"
+                    style={{ color: 'rgba(184,212,240,0.3)' }}>
+                    {u.role.replace(/_/g, ' ')}
+                  </span>
+                </div>
+
+                {/* Toggle */}
+                <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+                  <span className="nav-label text-[0.48rem]"
+                    style={{ color: u.isDelegated ? BLUE : 'rgba(184,212,240,0.2)' }}>
+                    {u.isDelegated ? 'ON' : 'OFF'}
+                  </span>
+                  {isToggling ? (
+                    <div className="w-12 h-6 flex items-center justify-center">
+                      <Loader2 size={14} className="animate-spin" style={{ color: BLUE }} />
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => void handleToggle(u)}
+                      className="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 transition-all duration-200 ease-in-out focus:outline-none"
+                      style={{
+                        backgroundColor: u.isDelegated ? BLUE : 'rgba(184,212,240,0.1)',
+                        borderColor: u.isDelegated ? BLUE : 'rgba(184,212,240,0.15)',
+                      }}
+                      role="switch"
+                      aria-checked={u.isDelegated}
+                      title={u.isDelegated ? 'Revoke Core Admin delegation' : 'Grant Core Admin delegation'}>
+                      <span
+                        className="pointer-events-none inline-block h-4 w-4 rounded-full shadow transition-transform duration-200 ease-in-out"
+                        style={{
+                          background: u.isDelegated ? '#fff' : 'rgba(184,212,240,0.45)',
+                          transform: u.isDelegated ? 'translateX(22px)' : 'translateX(2px)',
+                          marginTop: '1px',
+                        }}
+                      />
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            )
+          })}
+        </div>
+      )}
+
+      <p className="nav-label text-[0.45rem] text-center" style={{ color: 'rgba(184,212,240,0.15)' }}>
+        Delegation is immediate and persists until revoked. All changes are logged in the Audit Trail.
+      </p>
+    </div>
+  )
+}
+
 // ── Access Matrix Tab ─────────────────────────────────────────────────────────
 function AccessMatrixTab({ matrix, onSave }: { matrix: AccessMatrixResponse | null; onSave: (overrides: Record<string, string[]>) => Promise<void> }) {
   const [selectedRole, setSelectedRole] = useState<string | null>(null)
@@ -428,6 +586,15 @@ function AccessMatrixTab({ matrix, onSave }: { matrix: AccessMatrixResponse | nu
     'CAN_VIEW_NOTES', 'CAN_VIEW_ALL_INTERNS', 'CAN_MANAGE_APPROVALS',
     'CAN_VIEW_AUDIT_LOGS', 'CAN_MANAGE_IP_BLOCKS', 'CAN_VIEW_LOGIN_LOGS',
   ]
+
+  // Filter out assignment target permissions — those are managed via the Delegation tab
+  const ASSIGN_TARGET_PERMS = [
+    'CAN_ASSIGN_TO_CORE_ADMIN',
+    'CAN_ASSIGN_TO_ADMIN',
+    'CAN_ASSIGN_TO_LEAD',
+    'CAN_ASSIGN_TO_INTERN',
+  ]
+  const generalPermsAll = matrix.allPermissions.filter(p => !ASSIGN_TARGET_PERMS.includes(p)).sort()
 
   function enterEditMode() {
     if (!matrix) return
@@ -541,8 +708,11 @@ function AccessMatrixTab({ matrix, onSave }: { matrix: AccessMatrixResponse | nu
               {roleData.permissions.length} of {matrix.allPermissions.length} permissions granted
             </p>
           </div>
+
+          {/* Assignment target permissions are managed in the Delegation tab */}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {matrix.allPermissions.sort().map(p => {
+            {generalPermsAll.map(p => {
               const has = roleData.permissions.includes(p)
               return (
                 <div key={p} className="flex items-center gap-2 p-2 rounded-sm"
@@ -560,10 +730,10 @@ function AccessMatrixTab({ matrix, onSave }: { matrix: AccessMatrixResponse | nu
         </div>
       )}
 
-      {/* Edit mode — full interactive matrix */}
+      {/* Edit mode — General permissions table */}
       {editMode && (
         <div className="glass-card rounded-sm p-5">
-          <p className="nav-label text-[0.55rem] mb-4" style={{ color: `${GOLD}66` }}>EDIT PERMISSIONS — CLICK TO TOGGLE</p>
+          <p className="nav-label text-[0.55rem] mb-4" style={{ color: `${GOLD}66` }}>GENERAL PERMISSIONS — CLICK TO TOGGLE</p>
           <div className="overflow-x-auto">
             <table className="uris-table w-full text-center" style={{ minWidth: '700px' }}>
               <thead>
@@ -582,7 +752,7 @@ function AccessMatrixTab({ matrix, onSave }: { matrix: AccessMatrixResponse | nu
                 </tr>
               </thead>
               <tbody>
-                {matrix.allPermissions.sort().map(p => (
+                {generalPermsAll.map(p => (
                   <tr key={p}>
                     <td className="text-left nav-label text-[0.5rem] sticky left-0" style={{ background: 'rgba(13,15,28,0.95)', color: ICE_DIM }}>
                       {p.replace(/^CAN_/, '').replace(/_/g, ' ')}
@@ -1151,7 +1321,8 @@ export default function Governance() {
     { key: 'promotions',    label: 'PROMOTIONS',     icon: TrendingUp,  adminOnly: true },
     { key: 'users',         label: 'USERS',          icon: Users,       adminOnly: true },
     { key: 'role-history',  label: 'ROLE HISTORY',   icon: Clock,       adminOnly: true },
-    { key: 'access-matrix', label: 'ACCESS MATRIX',  icon: Lock,        adminOnly: true },
+    { key: 'delegation',    label: 'DELEGATION',     icon: ShieldCheck, adminOnly: true },
+    { key: 'access-matrix', label: 'PERMISSIONS',    icon: Lock,        adminOnly: true },
     { key: 'security',      label: 'SECURITY',       icon: Shield,      adminOnly: true },
     { key: 'permissions',   label: 'MY PERMISSIONS', icon: Key },
   ]
@@ -1208,6 +1379,7 @@ export default function Governance() {
                 {tab === 'promotions'    && <PromotionsTab users={users} onSubmit={handlePromotion} />}
                 {tab === 'users'         && <UsersTab users={users} />}
                 {tab === 'role-history'  && <RoleHistoryTab records={roleHistory} />}
+                {tab === 'delegation'    && <DelegationPanel />}
                 {tab === 'access-matrix' && <AccessMatrixTab matrix={accessMatrix} onSave={handleSaveMatrix} />}
                 {tab === 'security'      && <SecurityTab security={security} />}
                 {tab === 'permissions'   && <PermissionsTab perms={perms} />}

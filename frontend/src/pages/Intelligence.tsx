@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 import Starfield from '../components/Starfield'
+import api from '../services/api'
 import {
   getAnalyticsDashboard,
   getIntegrationIntelligence,
@@ -136,7 +137,7 @@ function ChartTooltip({ active, payload, label }: any) {
   )
 }
 
-type Tab = 'overview' | 'risks' | 'assignment' | 'workload' | 'trends' | 'alerts' | 'teams' | 'digest' | 'google' | 'integration'
+type Tab = 'overview' | 'risks' | 'assignment' | 'workload' | 'trends' | 'alerts' | 'teams' | 'digest' | 'google' | 'integration' | 'presence' | 'presence'
 
 const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
   { key: 'overview',     label: 'OVERVIEW',     icon: BarChart2 },
@@ -149,6 +150,7 @@ const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
   { key: 'digest',       label: 'DIGEST',       icon: Zap },
   { key: 'google',       label: 'GOOGLE',       icon: Globe },
   { key: 'integration',  label: 'INTEGRATION',  icon: Cpu },
+  { key: 'presence',     label: 'PRESENCE',     icon: Radio },
 ]
 
 // ── Overview Tab ──────────────────────────────────────────────────────────────
@@ -815,6 +817,93 @@ function GoogleTab({ data }: { data: GoogleIntelligence }) {
   )
 }
 
+// ── Presence Intelligence Tab ─────────────────────────────────────────────────
+function PresenceIntelligenceTab() {
+  const [data, setData]   = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api.get('/analytics/presence')
+      .then(r => setData((r.data as any).data))
+      .catch(() => setData(null))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 size={24} className="animate-spin" style={{ color: GOLD }} />
+      </div>
+    )
+  }
+
+  if (!data || !data.rows || data.rows.length === 0) {
+    return (
+      <div className="glass-card rounded-sm p-10 text-center">
+        <Radio size={28} className="mx-auto mb-3" style={{ color: ICE_DIM }} />
+        <p className="font-body text-sm mb-1" style={{ color: ICE_DIM }}>
+          No presence data yet.
+        </p>
+        <p className="font-body text-xs" style={{ color: `${ICE_DIM}88` }}>
+          Interns need to use the Check In / Check Out widget on their dashboard to generate data.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <StatCard icon={Users}         label="INTERNS WITH DATA"   value={data.rows.length}                         color={GOLD}  />
+        <StatCard icon={Activity}      label="AVG CONSISTENCY"     value={`${data.summary?.avgConsistency ?? 0}%`}  color={GREEN} />
+        <StatCard icon={AlertTriangle} label="MISSED WINDOWS"      value={data.summary?.totalMissedWindows ?? 0}    color={AMBER} />
+      </div>
+
+      {/* Per-intern table */}
+      <div className="glass-card rounded-sm p-5">
+        <SectionHeader label="PRESENCE INTELLIGENCE" title={`Daily Attendance — Last ${data.windowDays} Days`} />
+        <div className="overflow-x-auto">
+          <table className="uris-table w-full">
+            <thead>
+              <tr>
+                <th className="text-left">Intern</th>
+                <th className="text-center">Check-In Days</th>
+                <th className="text-center">Avg Session</th>
+                <th className="text-center">Consistency</th>
+                <th className="text-center">Declared Windows</th>
+                <th className="text-center">Missed Windows</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.rows.map((r: any) => (
+                <tr key={r.internId}>
+                  <td className="font-body text-sm text-frost/80">{r.name}</td>
+                  <td className="text-center font-mono text-sm">{r.checkInDays}</td>
+                  <td className="text-center font-mono text-sm">
+                    {r.avgSessionDurationMinutes > 0 ? `${r.avgSessionDurationMinutes}m` : '—'}
+                  </td>
+                  <td className="text-center">
+                    <span className="font-display font-black text-base"
+                      style={{ color: r.consistencyRate >= 70 ? GREEN : r.consistencyRate >= 40 ? AMBER : RED }}>
+                      {r.consistencyRate}%
+                    </span>
+                  </td>
+                  <td className="text-center font-mono text-sm" style={{ color: ICE_DIM }}>{r.declaredWindows}</td>
+                  <td className="text-center font-mono text-sm"
+                    style={{ color: r.missedWindows > 0 ? AMBER : ICE_DIM }}>
+                    {r.missedWindows}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main page component ───────────────────────────────────────────────────────
 // ── Integration Intelligence Tab ──────────────────────────────────────────────
 function ScoreBar({ score, color }: { score: number; color: string }) {
@@ -1387,6 +1476,7 @@ export default function Intelligence() {
                     </div>
                   )
                 )}
+                {tab === 'presence' && <PresenceIntelligenceTab />}
               </motion.div>
             </>
           )}

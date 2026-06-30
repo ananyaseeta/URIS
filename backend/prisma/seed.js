@@ -165,13 +165,7 @@ async function seed() {
     console.log(`✓ ${r.name}:  ${r.email} (${r.role})`);
   }
 
-  // ── 2. Team ────────────────────────────────────────────────────────────────
-  const team = await prisma.team.upsert({
-    where:  { name: 'AI Team Alpha' },
-    update: {},
-    create: { name: 'AI Team Alpha', description: 'Core AI/ML engineering team working on URIS intelligence layer.' },
-  });
-  console.log(`✓ Team:   ${team.name}`);
+  // No default teams are created here as per dynamic team setup requirement.
 
   // ── 3. Interns ────────────────────────────────────────────────────────────
   const monday = thisMonday();
@@ -194,15 +188,7 @@ async function seed() {
       create: { userId: user.id },
     });
 
-    // UserTeam membership
-    const existingMembership = await prisma.userTeam.findFirst({
-      where: { userId: user.id, teamId: team.id, leftAt: null },
-    });
-    if (!existingMembership) {
-      await prisma.userTeam.create({
-        data: { userId: user.id, teamId: team.id, role: 'member' },
-      });
-    }
+    // No default team assignments are performed here.
 
     // AvailabilitySlot — current week
     await prisma.availabilitySlot.upsert({

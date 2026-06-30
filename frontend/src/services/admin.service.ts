@@ -73,17 +73,29 @@ export interface IntegrationInfo {
   id: string
   name: string
   status: 'connected' | 'partial' | 'not_configured' | 'failed'
-  envOk: boolean
+  /** Whether all required env vars are present (backend field: `configured`) */
+  configured: boolean
+  /** Alias for configured — kept for backward compatibility */
+  envOk?: boolean
   operational: boolean
-  notes: string
-  features: string[]
+  /** Plain-English status summary (backend field: `health`) */
+  health: string
+  /** Alias for health — kept for backward compatibility */
+  notes?: string
+  /** What this integration powers in the product (backend field: `powers`) */
+  powers: string[]
+  /** Alias for powers — kept for backward compatibility */
+  features?: string[]
   frontendVisible: boolean
+  optional?: boolean
 }
 
 export interface IntegrationAudit {
   status: 'all_operational' | 'degraded' | 'partial'
+  summary?: string
   timestamp: string
-  uptime: number
+  /** Uptime as a formatted string (e.g. "2h 15m 30s") from the backend */
+  uptime: string | number
   integrations: IntegrationInfo[]
 }
 

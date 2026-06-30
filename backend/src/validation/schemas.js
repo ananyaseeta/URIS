@@ -15,7 +15,7 @@
 'use strict';
 
 const Joi = require('joi');
-const { VALID_ROLES } = require('../constants/roles');
+const { VALID_ROLES, normalizeRole } = require('../constants/roles');
 
 // ── Reusable primitives ────────────────────────────────────────────────────────
 
@@ -97,18 +97,22 @@ const SELF_REGISTERABLE_ROLES = new Set([
 
 const register = Joi.object({
   body: Joi.object({
-    email:    Joi.string().email().required().messages({
+    email:    Joi.string().email({ tlds: { allow: false } }).required().messages({
       'string.email': 'email must be a valid email address',
       'any.required': 'email is required',
     }),
-    password: Joi.string().min(6).required().messages({
-      'string.min':   'password must be at least 6 characters',
+    password: Joi.string().min(8).required().messages({
+      'string.min':   'password must be at least 8 characters',
       'any.required': 'password is required',
     }),
     name: Joi.string().trim().max(100).optional().allow('', null),
-    role: Joi.string().valid(...SELF_REGISTERABLE_ROLES).default('TECHNICAL_INTERN').messages({
-      'any.only': 'Self-registration is only available for intern roles. Admin and lead accounts are created internally.',
-    }),
+    role: Joi.string().trim().custom((value, helpers) => {
+      const normalized = normalizeRole(value);
+      if (!normalized) {
+        return helpers.message(`Invalid role "${value}"`);
+      }
+      return value;
+    }).default('TECHNICAL_INTERN'),
   }).required(),
   params: Joi.object(),
   query:  Joi.object(),
@@ -116,7 +120,7 @@ const register = Joi.object({
 
 const login = Joi.object({
   body: Joi.object({
-    email:    Joi.string().email().required().messages({
+    email:    Joi.string().email({ tlds: { allow: false } }).required().messages({
       'string.email': 'email must be a valid email address',
       'any.required': 'email is required',
     }),
@@ -648,9 +652,9 @@ const changePassword = Joi.object({
 
 const forgotPassword = Joi.object({
   body: Joi.object({
-    email:    Joi.string().email().required().messages({ 'any.required': 'Email is required' }),
+    email:    Joi.string().email({ tlds: { allow: false } }).required().messages({ 'any.required': 'Email is required' }),
     role:     Joi.string().max(50).optional().messages({ 'string.max': 'Role must not exceed 50 characters' }),
-    leadEmail: Joi.string().email().optional().allow('', null).messages({ 'string.email': 'Lead email must be a valid email address' }),
+    leadEmail: Joi.string().email({ tlds: { allow: false } }).optional().allow('', null).messages({ 'string.email': 'Lead email must be a valid email address' }),
   }).required(),
   params: Joi.object(),
   query:  Joi.object(),

@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Diamond, ArrowLeft, Camera, User } from 'lucide-react'
+import { Diamond, ArrowLeft, Camera, User, Eye, EyeOff, Check } from 'lucide-react'
 import Starfield from '../components/Starfield'
 import api from '../services/api'
 import { useAuthStore } from '../store/authStore'
@@ -20,6 +20,9 @@ export default function Register() {
     joiningDate: '',
     gdocUrl: '',
   })
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPw, setShowPw] = useState(false)
+  const [showConfirmPw, setShowConfirmPw] = useState(false)
   const [profilePicture, setProfilePicture] = useState<File | null>(null)
   const [picturePreview, setPicturePreview] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -29,7 +32,10 @@ export default function Register() {
   const navigate = useNavigate()
   const login = useAuthStore(s => s.login)
 
-  const update = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+  const update = (k: string, v: string) => {
+    setForm(f => ({ ...f, [k]: v }))
+    setError('')
+  }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -46,6 +52,31 @@ export default function Register() {
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
     setError('')
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(form.email.trim())) {
+      setError('Please enter a valid email address.')
+      return
+    }
+
+    // Validate password meets all checklist requirements
+    const password = form.password
+    const hasMinLength = password.length >= 8
+    const hasUppercase = /[A-Z]/.test(password)
+    const hasLowercase = /[a-z]/.test(password)
+    const hasNumber = /[0-9]/.test(password)
+    const hasSpecial = /[^A-Za-z0-9]/.test(password)
+    if (!hasMinLength || !hasUppercase || !hasLowercase || !hasNumber || !hasSpecial) {
+      setError('Password must meet all checklist requirements.')
+      return
+    }
+
+    // Validate passwords match
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
 
     // Validate profile picture required
     if (!profilePicture) {
@@ -93,13 +124,31 @@ export default function Register() {
       }
 
       login(data.token!, data.user)
-      navigate(data.user.role.includes('intern') ? '/availability' : '/dashboard')
+      navigate('/dashboard')
     } catch (err: unknown) {
       setError(extractErrorMessage(err, 'Registration failed. Please try again.'))
     } finally {
       setLoading(false)
     }
   }
+
+  const metCount = [
+    form.password.length >= 8,
+    /[A-Z]/.test(form.password),
+    /[a-z]/.test(form.password),
+    /[0-9]/.test(form.password),
+    /[^A-Za-z0-9]/.test(form.password)
+  ].filter(Boolean).length
+
+  const isSubmitDisabled =
+    loading ||
+    !form.name.trim() ||
+    !form.email.trim() ||
+    !form.password ||
+    !confirmPassword ||
+    !profilePicture ||
+    form.password !== confirmPassword ||
+    metCount < 5
 
   // ── Pending approval screen ───────────────────────────────────────────────
   if (pendingApproval) {
@@ -172,29 +221,124 @@ export default function Register() {
             <div>
               <label className="nav-label text-[0.6rem] text-gold/60 block mb-2">FULL NAME</label>
               <input type="text" className="uris-input" placeholder="Your full name"
-                value={form.name} onChange={e => update('name', e.target.value)} required />
+                value={form.name} onChange={e => update('name', e.target.value)}
+                disabled={loading} required />
             </div>
 
             {/* Email */}
             <div>
               <label className="nav-label text-[0.6rem] text-gold/60 block mb-2">EMAIL ADDRESS</label>
               <input type="email" className="uris-input" placeholder="you@company.com"
-                value={form.email} onChange={e => update('email', e.target.value)} required />
+                value={form.email} onChange={e => update('email', e.target.value)}
+                disabled={loading} required />
             </div>
 
             {/* Password */}
             <div>
               <label className="nav-label text-[0.6rem] text-gold/60 block mb-2">PASSWORD</label>
-              <input type="password" className="uris-input" placeholder="Min. 6 characters"
-                value={form.password} onChange={e => update('password', e.target.value)}
-                minLength={6} required />
+              <div className="relative">
+                <input type={showPw ? 'text' : 'password'} className="uris-input pr-10" placeholder="Min. 8 characters"
+                  value={form.password} onChange={e => update('password', e.target.value)}
+                  disabled={loading} required />
+                <button type="button" onClick={() => setShowPw(!showPw)} disabled={loading}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ice/30 hover:text-gold transition-colors">
+                  {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+
+              {/* Password strength & checklist */}
+              {form.password.length > 0 && (
+                <>
+                  {/* Strength indicator */}
+                  <div className="mt-2.5 space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <span className="nav-label text-[0.55rem] text-ice/40">PASSWORD STRENGTH</span>
+                      <span className={`nav-label text-[0.55rem] font-bold ${
+                        metCount <= 2 ? 'text-red-400' :
+                        metCount === 3 ? 'text-amber-500' :
+                        metCount === 4 ? 'text-gold/80' : 'text-gold'
+                      }`}>
+                        {metCount <= 2 ? 'WEAK' :
+                         metCount === 3 ? 'MEDIUM' :
+                         metCount === 4 ? 'STRONG' : 'VERY STRONG'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1">
+                      {[1, 2, 3, 4].map(idx => {
+                        const activeSegments = metCount <= 2 ? 1 : metCount === 3 ? 2 : metCount === 4 ? 3 : 4;
+                        const barColor = metCount <= 2 ? 'bg-red-500' : metCount === 3 ? 'bg-amber-500' : metCount === 4 ? 'bg-gold/80' : 'bg-gold';
+                        return (
+                          <div
+                            key={idx}
+                            className={`h-1 rounded-sm transition-all duration-300 ${
+                              idx <= activeSegments ? barColor : 'bg-navy-900/50'
+                            }`}
+                            style={{ border: '1px solid rgba(201,168,76,0.05)' }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Checklist */}
+                  <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5">
+                    {[
+                      { label: '8+ characters', met: form.password.length >= 8 },
+                      { label: 'Uppercase letter', met: /[A-Z]/.test(form.password) },
+                      { label: 'Lowercase letter', met: /[a-z]/.test(form.password) },
+                      { label: 'Number', met: /[0-9]/.test(form.password) },
+                      { label: 'Special character', met: /[^A-Za-z0-9]/.test(form.password) },
+                    ].map((c, i) => (
+                      <div key={i} className="flex items-center gap-1.5">
+                        {c.met ? (
+                          <Check size={10} className="text-gold shrink-0" />
+                        ) : (
+                          <span className="w-2.5 h-2.5 flex items-center justify-center shrink-0">
+                            <span className="w-1 h-1 rounded-full bg-ice/20" />
+                          </span>
+                        )}
+                        <span className={`font-body text-[0.65rem] transition-colors ${c.met ? 'text-gold/80' : 'text-ice/40'}`}>
+                          {c.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Confirm Password */}
+            <div>
+              <label className="nav-label text-[0.6rem] text-gold/60 block mb-2">CONFIRM PASSWORD</label>
+              <div className="relative">
+                <input type={showConfirmPw ? 'text' : 'password'} className="uris-input pr-10" placeholder="Re-enter password"
+                  value={confirmPassword} onChange={e => { setConfirmPassword(e.target.value); setError(''); }}
+                  disabled={loading} required />
+                <button type="button" onClick={() => setShowConfirmPw(!showConfirmPw)} disabled={loading}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ice/30 hover:text-gold transition-colors">
+                  {showConfirmPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+              {confirmPassword && (
+                <p className={`nav-label text-[0.55rem] mt-1.5 flex items-center gap-1 ${
+                  form.password === confirmPassword ? 'text-gold/80' : 'text-red-400/80'
+                }`}>
+                  {form.password === confirmPassword ? (
+                    <>
+                      <Check size={10} className="shrink-0" /> PASSWORDS MATCH
+                    </>
+                  ) : (
+                    'PASSWORDS DO NOT MATCH'
+                  )}
+                </p>
+              )}
             </div>
 
             {/* Role — restricted to TECHNICAL_INTERN and RESEARCH_INTERN */}
             <div>
               <label className="nav-label text-[0.6rem] text-gold/60 block mb-2">ROLE</label>
               <select className="uris-input w-full" value={form.role}
-                onChange={e => update('role', e.target.value)}>
+                onChange={e => update('role', e.target.value)} disabled={loading}>
                 <option value="TECHNICAL_INTERN">Technical Intern</option>
                 <option value="RESEARCH_INTERN">Research Intern</option>
               </select>
@@ -210,6 +354,7 @@ export default function Register() {
                 value={form.dateOfBirth}
                 onChange={e => update('dateOfBirth', e.target.value)}
                 max={new Date().toISOString().split('T')[0]}
+                disabled={loading}
               />
             </div>
 
@@ -219,6 +364,7 @@ export default function Register() {
               <input type="date" className="uris-input"
                 value={form.joiningDate}
                 onChange={e => update('joiningDate', e.target.value)}
+                disabled={loading}
               />
             </div>
 
@@ -230,6 +376,7 @@ export default function Register() {
                   placeholder="https://docs.google.com/document/d/..."
                   value={form.gdocUrl}
                   onChange={e => update('gdocUrl', e.target.value)}
+                  disabled={loading}
                 />
                 <p className="nav-label text-[0.5rem] text-ice/25 mt-1.5">
                   Link to your Google Docs work log document.
@@ -248,6 +395,7 @@ export default function Register() {
                 accept=".jpg,.jpeg,.png,.webp"
                 className="hidden"
                 onChange={handleFileChange}
+                disabled={loading}
               />
               <div className="flex items-center gap-4">
                 {/* Preview */}
@@ -260,8 +408,8 @@ export default function Register() {
                   )}
                 </div>
                 <div className="flex-1">
-                  <motion.button type="button" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                    onClick={() => fileInputRef.current?.click()}
+                  <motion.button type="button" whileHover={!loading ? { scale: 1.02 } : {}} whileTap={!loading ? { scale: 0.98 } : {}}
+                    onClick={() => fileInputRef.current?.click()} disabled={loading}
                     className="flex items-center gap-2 btn-outline px-4 py-2 rounded-sm text-sm w-full justify-center">
                     <Camera size={13} />
                     {profilePicture ? 'CHANGE PHOTO' : 'UPLOAD PHOTO'}
@@ -281,9 +429,9 @@ export default function Register() {
               </motion.p>
             )}
 
-            <motion.button type="submit" disabled={loading}
-              whileHover={!loading ? { scale: 1.02, boxShadow: '0 8px 28px rgba(201,168,76,0.3)' } : {}}
-              whileTap={!loading ? { scale: 0.98 } : {}}
+            <motion.button type="submit" disabled={isSubmitDisabled}
+              whileHover={!isSubmitDisabled ? { scale: 1.02, boxShadow: '0 8px 28px rgba(201,168,76,0.3)' } : {}}
+              whileTap={!isSubmitDisabled ? { scale: 0.98 } : {}}
               className="btn-gold w-full py-3 rounded-sm mt-2 disabled:opacity-50 flex items-center justify-center gap-2">
               {loading && <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />}
               {loading ? 'REGISTERING...' : 'CREATE ACCOUNT'}

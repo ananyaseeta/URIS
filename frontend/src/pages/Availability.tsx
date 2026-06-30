@@ -136,8 +136,12 @@ export default function Availability() {
         <div className="max-w-2xl mx-auto px-4 md:px-8 py-8">
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
             <p className="nav-label text-[0.55rem] text-gold/40 tracking-ultra mb-1">WEEKLY SUBMISSION</p>
-            <h1 className="font-display font-black text-3xl text-ice-gradient">Availability Declaration</h1>
+            <h1 className="font-display font-black text-3xl text-ice-gradient">My Schedule</h1>
             <div className="gold-rule w-14 mt-2" />
+            {/* Contextual explainer — helps first-time interns understand why this matters */}
+            <p className="font-body text-sm text-ice/45 mt-3 max-w-lg">
+              Tell your lead when you're free this week. They use this to decide who gets assigned the next task — so the more accurate you are, the better the fit.
+            </p>
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mt-6">
               <CountdownTimer />
             </div>
@@ -224,8 +228,8 @@ export default function Availability() {
 
                 <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2 }} className="glass-card rounded-sm p-6">
-                  <p className="nav-label text-[0.6rem] text-gold/60 mb-1">MAX CONTINUOUS FREE BLOCK</p>
-                  <p className="font-body text-xs text-ice/30 mb-4">Hours of uninterrupted availability</p>
+                  <p className="nav-label text-[0.6rem] text-gold/60 mb-1">LONGEST STRETCH YOU'RE FREE</p>
+                  <p className="font-body text-xs text-ice/30 mb-4">Maximum hours of uninterrupted availability in a single block</p>
                   <div className="grid grid-cols-6 gap-2">
                     {[1, 2, 3, 4, 5, 6].map(h => (
                       <motion.button key={h} type="button" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
@@ -246,18 +250,21 @@ export default function Availability() {
                 <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.3 }} className="glass-card rounded-sm p-6">
                   <div className="flex items-center justify-between mb-4">
-                    <p className="nav-label text-[0.6rem] text-gold/60">BUSY BLOCKS</p>
+                    <div>
+                      <p className="nav-label text-[0.6rem] text-gold/60">DAYS I'M BUSY</p>
+                      <p className="font-body text-[0.65rem] text-ice/30 mt-0.5">Mark any days you can't take on work</p>
+                    </div>
                     <motion.button type="button" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
                       onClick={addBlock}
                       className="flex items-center gap-1.5 nav-label text-[0.6rem] text-gold/70 hover:text-gold transition-colors">
-                      <Plus size={12} />ADD BLOCK
+                      <Plus size={12} />ADD DAY
                     </motion.button>
                   </div>
                   <AnimatePresence>
                     {busyBlocks.length === 0 ? (
                       <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                         className="font-body text-sm text-ice/25 text-center py-4">
-                        No busy blocks — all days marked available
+                        No busy days — your whole week is available
                       </motion.p>
                     ) : (
                       <div className="space-y-3">

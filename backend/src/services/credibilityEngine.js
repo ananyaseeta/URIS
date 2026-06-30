@@ -382,7 +382,7 @@ function computeThroughputStability({ dailyAverages }) {
   };
 }
 
-function computeCredibilityScore({
+function aggregateCredibilityScore({
   updateConsistency01,
   deadlineReliability01,
   responsiveness01,
@@ -499,7 +499,7 @@ async function computeCredibilityForIntern(internId) {
   const throughputStability = computeThroughputStability({ dailyAverages: throughputDailyAverages });
   const blockerRisk = computeBlockerRisk({ tasks, unresolvedAlerts });
 
-  const final = computeCredibilityScore({
+  const final = aggregateCredibilityScore({
     updateConsistency01: updateConsistency.value01,
     deadlineReliability01: deadlineReliability.value01,
     responsiveness01: responsiveness.value01,

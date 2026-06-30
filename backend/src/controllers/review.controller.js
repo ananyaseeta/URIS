@@ -99,6 +99,7 @@ async function getReviewForTask(req, res, next) {
       timeliness: review.timeliness,
       initiative: review.initiative,
       complexity: review.complexity,
+      notes:      review.notes ?? null,
       pps:        parseFloat((review.quality * 0.40 + review.timeliness * 0.35 + review.initiative * 0.25).toFixed(2)),
       createdAt:  review.createdAt,
     });

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore, selectToken, selectUser } from '../store/authStore'
 import Sidebar from '../components/Sidebar'
 import Starfield from '../components/Starfield'
@@ -25,13 +25,16 @@ export default function ChatFindPage() {
   const token = useAuthStore(selectToken)
   const user  = useAuthStore(selectUser)
   const nav   = useNavigate()
+  const [searchParams] = useSearchParams()
 
   const [users, setUsers]           = useState<UserData[]>([])
   const [friends, setFriends]       = useState<UserData[]>([])
   const [requests, setRequests]     = useState<FriendRequest[]>([])
   const [loading, setLoading]       = useState(true)
   const [searching, setSearching]   = useState(false)
-  const [searchTerm, setSearchTerm] = useState('')
+  // HIGH-1: pre-populate search term from ?userId= param passed by the
+  // Dashboard Chat shortcut when the target isn't yet a friend.
+  const [searchTerm, setSearchTerm] = useState(() => searchParams.get('userId') ?? '')
   const [isGroupMode, setIsGroupMode] = useState(false)
   const [groupName, setGroupName]   = useState('')
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])

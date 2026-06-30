@@ -36,11 +36,13 @@ const ACTION_OPTIONS = [
   'ADD_TASK_COLLABORATOR', 'REMOVE_TASK_COLLABORATOR', 'ADD_TASK_OBSERVER', 'REMOVE_TASK_OBSERVER',
   // Support
   'CREATE_SUPPORT_REQUEST', 'ASSIGN_SUPPORT_REQUEST', 'UPDATE_SUPPORT_REQUEST_STATUS',
+  // Virtual Presence
+  'CHECK_IN', 'CHECK_OUT', 'DECLARE_WINDOW',
   // Access denied
   'PERMISSION_DENIED', 'UNAUTHORIZED_ACCESS',
 ]
 
-const ENTITY_OPTIONS = ['USER', 'TASK', 'SCORE', 'REVIEW', 'ALERT', 'APPROVAL', 'CONFIG', 'INTERN', 'SUPPORT', 'SYSTEM']
+const ENTITY_OPTIONS = ['USER', 'TASK', 'SCORE', 'REVIEW', 'ALERT', 'APPROVAL', 'CONFIG', 'INTERN', 'SUPPORT', 'PRESENCE', 'SYSTEM']
 
 const ACTION_COLORS: Record<string, string> = {
   // Auth — green
@@ -93,6 +95,10 @@ const ACTION_COLORS: Record<string, string> = {
   // Access denied — red
   PERMISSION_DENIED:   '#f87171',
   UNAUTHORIZED_ACCESS: '#f87171',
+  // Virtual Presence — cyan/teal
+  CHECK_IN:       '#34d399',
+  CHECK_OUT:      '#60a5fa',
+  DECLARE_WINDOW: '#a78bfa',
 }
 
 const PAGE_SIZE = 25

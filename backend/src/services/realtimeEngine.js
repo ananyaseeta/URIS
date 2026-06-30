@@ -68,6 +68,43 @@ function isThrottled(key, windowMs = 5000) {
   return false;
 }
 
+// ── Per-user connection registry (LOW-4) ──────────────────────────────────────
+// Tracks all active socket IDs for each userId so we can enforce a cap on
+// concurrent connections. Without this a user with 10 open tabs creates 10
+// socket connections with no server-side bound.
+//
+// Cap is tunable via SOCKET_MAX_CONNECTIONS_PER_USER (default 5).
+// When the cap is exceeded the oldest connection is forcibly disconnected so
+// the new one is always accepted — this matches browser tab behaviour where
+// the newest tab should always work.
+
+const _userSockets = new Map(); // userId → Set<socketId> (insertion-ordered)
+
+function _registerSocket(userId, socketId) {
+  if (!_userSockets.has(userId)) _userSockets.set(userId, new Set());
+  const set = _userSockets.get(userId);
+  set.add(socketId);
+
+  const cap = parseInt(process.env.SOCKET_MAX_CONNECTIONS_PER_USER) || 5;
+  if (set.size > cap && _io) {
+    // Evict the oldest socket (first inserted value in the Set)
+    const oldest = set.values().next().value;
+    const oldSocket = _io.sockets.sockets.get(oldest);
+    if (oldSocket) {
+      logger.debug({ userId, evicted: oldest }, 'Socket cap exceeded — evicting oldest connection');
+      oldSocket.disconnect(true);
+    }
+    set.delete(oldest);
+  }
+}
+
+function _unregisterSocket(userId, socketId) {
+  const set = _userSockets.get(userId);
+  if (!set) return;
+  set.delete(socketId);
+  if (set.size === 0) _userSockets.delete(userId);
+}
+
 // ── Singleton IO instance ─────────────────────────────────────────────────────
 
 let _io = null;
@@ -119,6 +156,7 @@ function init(httpServer, allowedOrigins) {
       socket.data.userId   = decoded.id;
       socket.data.role     = decoded.role;
       socket.data.internId = decoded.internId ?? null;
+      socket.data.userName = decoded.name    ?? null;
 
       next();
     } catch (err) {
@@ -135,6 +173,9 @@ function init(httpServer, allowedOrigins) {
     // Join all applicable role rooms
     for (const room of rooms) socket.join(room);
 
+    // LOW-4: register this socket; evicts the oldest if the per-user cap is exceeded
+    _registerSocket(userId, socket.id);
+
     logger.debug({ userId, role, rooms }, 'Socket connected');
 
     // Send initial operational pulse on connect so UI is immediately populated
@@ -142,6 +183,8 @@ function init(httpServer, allowedOrigins) {
 
     socket.on('disconnect', (reason) => {
       logger.debug({ userId, reason }, 'Socket disconnected');
+      // LOW-4: clean up connection registry on disconnect
+      _unregisterSocket(userId, socket.id);
     });
 
     // Client can request a fresh pulse manually (e.g. after tab focus)
@@ -174,25 +217,6 @@ function init(httpServer, allowedOrigins) {
         socket.leave(`chat:${chatId}`);
         logger.debug({ userId, chatId }, 'Socket left chat room');
       }
-    });
-
-    // ── FIX 15: Typing indicators ─────────────────────────────────────────
-    // Client emits 'chat:typing' when user starts typing and
-    // 'chat:typing_stop' when they stop (or send). We broadcast to
-    // everyone else in that chat room with the sender's name so the
-    // UI can show "Alice is typing...". No DB write — ephemeral only.
-    socket.on('chat:typing', async ({ chatId, userName } = {}) => {
-      if (!chatId || typeof chatId !== 'string') return;
-      socket.to(`chat:${chatId}`).emit('chat:typing', {
-        userId,
-        userName: userName || 'Someone',
-        chatId,
-      });
-    });
-
-    socket.on('chat:typing_stop', ({ chatId } = {}) => {
-      if (!chatId || typeof chatId !== 'string') return;
-      socket.to(`chat:${chatId}`).emit('chat:typing_stop', { userId, chatId });
     });
   });
 
@@ -501,9 +525,145 @@ function getIO() {
   return _io;
 }
 
+/**
+ * Given a chatId, returns the set of userIds from the provided participant list
+ * who currently have NO socket in the chat room — i.e. they are offline for
+ * this conversation and will not receive the real-time newMessage event.
+ *
+ * Used by sendMessage to decide who needs an email notification.
+ *
+ * @param {string}   chatId         — the chat room key (without 'chat:' prefix)
+ * @param {string[]} participantIds — all participant userIds for this chat
+ * @param {string}   excludeUserId  — the sender; always excluded
+ * @returns {string[]} userIds who are offline in this chat
+ */
+function getOfflineParticipants(chatId, participantIds, excludeUserId) {
+  if (!_io) return participantIds.filter(id => id !== excludeUserId);
+
+  const roomKey = `chat:${chatId}`;
+  const roomSockets = _io.sockets.adapter.rooms.get(roomKey);
+
+  if (!roomSockets || roomSockets.size === 0) {
+    // Nobody is in the room — everyone except the sender is offline
+    return participantIds.filter(id => id !== excludeUserId);
+  }
+
+  // Build the set of userIds that have at least one socket in the room
+  const onlineUserIds = new Set();
+  for (const socketId of roomSockets) {
+    const sock = _io.sockets.sockets.get(socketId);
+    if (sock?.data?.userId) onlineUserIds.add(sock.data.userId);
+  }
+
+  return participantIds.filter(id => id !== excludeUserId && !onlineUserIds.has(id));
+}
+
+// ── Presence update (added for Virtual Presence feature) ──────────────────────
+/**
+ * Broadcast a presence update event.
+ * Called when an intern checks in, checks out, or declares an availability window.
+ *
+ * @param {{ internId, userId, status, checkInAt?, checkOutAt?, durationMinutes?, availableFrom?, availableTo? }} data
+ */
+function emitPresenceUpdate(data) {
+  if (!_io) return;
+
+  const payload = {
+    type:      'presence_update',
+    timestamp: new Date().toISOString(),
+    severity:  'info',
+    affectedEntities: [{ internId: data.internId }],
+    payload:   data,
+    operationalImpact: data.status === 'ONLINE'
+      ? 'Intern checked in'
+      : data.status === 'OFFLINE'
+        ? `Intern checked out (${data.durationMinutes ?? 0} min session)`
+        : 'Intern declared availability window',
+    explainability: {
+      source:  'PresenceService',
+      trigger: data.status,
+    },
+  };
+
+  // Broadcast to admin and lead rooms
+  _io.to('admin').to('lead').emit('intelligence:presence_update', payload);
+
+  // Also notify the specific intern
+  if (data.internId) {
+    _io.to(`intern:${data.internId}`).emit('intelligence:presence_update', payload);
+  }
+}
+
+// ── LOW-1: Role re-room ───────────────────────────────────────────────────────
+/**
+ * Re-assign all active sockets for a user to the rooms that match their new
+ * role. Called by the admin controller immediately after persisting a role
+ * change so the effect takes place on live connections without requiring a
+ * reconnect.
+ *
+ * The function:
+ *   1. Looks up every active socket for the given userId.
+ *   2. Leaves ALL current role rooms (admin, lead, and any intern:* room).
+ *   3. Joins the rooms appropriate for newRole.
+ *   4. Updates socket.data.role so future room-based logic is consistent.
+ *
+ * Chat rooms (chat:*) are intentionally left untouched — those are authorised
+ * per ChatParticipant and are unaffected by role changes.
+ *
+ * @param {string} userId    — the user whose role changed
+ * @param {string} newRole   — the new role value (from ROLES constants)
+ * @param {string|null} internId — intern record id if applicable, else null
+ */
+function reroomSocket(userId, newRole, internId = null) {
+  if (!_io) return;
+
+  const socketIds = _userSockets.get(userId);
+  if (!socketIds || socketIds.size === 0) return;
+
+  // All possible role rooms — we leave all of them before rejoining the correct set
+  const ALL_ROLE_ROOMS = ['admin', 'lead'];
+
+  const newRooms = getRoomsForRole(newRole, internId);
+
+  for (const socketId of socketIds) {
+    const sock = _io.sockets.sockets.get(socketId);
+    if (!sock) continue;
+
+    // Leave every role room the socket might currently be in
+    for (const room of ALL_ROLE_ROOMS) sock.leave(room);
+    // Also leave any intern:* room (pattern match against current rooms)
+    for (const room of sock.rooms) {
+      if (room.startsWith('intern:')) sock.leave(room);
+    }
+
+    // Join the rooms for the new role
+    for (const room of newRooms) sock.join(room);
+
+    // Update the cached role on the socket so subsequent logic is consistent
+    sock.data.role = newRole;
+
+    logger.info({ userId, socketId, newRole, newRooms }, 'Socket re-roomed after role change');
+  }
+}
+
+/**
+ * Returns an array of userIds (from the provided list) that currently
+ * have at least one active socket connection (i.e. they are online).
+ * Used by getChats to attach presence dots to the chat list.
+ */
+function getOnlineUserIds(userIds) {
+  return userIds.filter(id => {
+    const sockets = _userSockets.get(id);
+    return sockets && sockets.size > 0;
+  });
+}
+
 module.exports = {
   init,
   getIO,
+  reroomSocket,
+  getOnlineUserIds,
+  getOfflineParticipants,
   emitAlertUpdate,
   emitWorkloadUpdate,
   emitBlockerEscalation,
@@ -513,4 +673,5 @@ module.exports = {
   emitIntegrationChange,
   emitEnterpriseHealthUpdate,
   broadcastOperationalPulse,
+  emitPresenceUpdate,
 };

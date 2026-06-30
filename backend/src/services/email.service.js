@@ -280,6 +280,45 @@ function renderOperationalAlert({ alertMessage = '', severity = 'warning', inter
   };
 }
 
+/**
+ * New chat message notification.
+ * Sent to participants who have no active socket connection (offline users).
+ *
+ * @param {object} opts
+ * @param {string} opts.recipientName  - Display name of the recipient
+ * @param {string} opts.senderName     - Display name of the message sender
+ * @param {string} opts.chatName       - Conversation name (other person's name or group name)
+ * @param {string} opts.preview        - First 120 chars of the message content (plain text)
+ * @param {string} opts.chatUrl        - Direct link to the conversation
+ */
+function renderNewChatMessage({ recipientName = 'User', senderName = 'Someone', chatName = 'a conversation', preview = '', chatUrl = '' }) {
+  const truncatedPreview = preview.length > 120 ? preview.slice(0, 120) + '…' : preview;
+  const url = chatUrl || (process.env.FRONTEND_URL || 'http://localhost:5173') + '/chat';
+
+  const body = `
+    ${sectionLabel('New Message')}
+    ${heading('You have a new message')}
+    ${goldRule()}
+    ${bodyText(`Hi <strong style="color:#e8f0fb;">${recipientName}</strong>, <strong style="color:#c9a84c;">${senderName}</strong> sent you a message in <strong style="color:#e8f0fb;">${chatName}</strong>.`)}
+    ${truncatedPreview ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+      style="background:rgba(7,8,15,0.6);border:1px solid rgba(201,168,76,0.12);border-left:3px solid rgba(201,168,76,0.4);border-radius:3px;margin:16px 0;">
+      <tr>
+        <td style="padding:14px 16px;">
+          <p style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;color:rgba(232,240,251,0.7);margin:0;line-height:1.6;font-style:italic;">&ldquo;${truncatedPreview}&rdquo;</p>
+        </td>
+      </tr>
+    </table>` : ''}
+    ${ctaButton('Open Conversation', url)}
+    ${bodyText('You are receiving this email because you were offline when this message was sent.')}
+  `;
+  return {
+    subject: `${senderName} sent you a message on URIS`,
+    html: layout({ title: 'New URIS Message', previewText: `${senderName}: ${truncatedPreview || 'sent you a message'}`, body }),
+    text: `Hi ${recipientName}, ${senderName} sent you a message in ${chatName}.\n\n"${truncatedPreview}"\n\nOpen conversation: ${url}`,
+  };
+}
+
 // ── Template registry ─────────────────────────────────────────────────────────
 
 const TEMPLATES = {
@@ -289,6 +328,7 @@ const TEMPLATES = {
   'task-assigned':     renderTaskAssigned,
   'gdoc-reminder':     renderGdocReminder,
   'operational-alert': renderOperationalAlert,
+  'new-chat-message':  renderNewChatMessage,
 };
 
 // ── Main send function ────────────────────────────────────────────────────────

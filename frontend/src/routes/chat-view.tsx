@@ -4,9 +4,18 @@ import { useAuthStore, selectToken, selectUser } from '../store/authStore'
 import Sidebar from '../components/Sidebar'
 import Starfield from '../components/Starfield'
 import api from '../services/api'
-import { ArrowLeft, Send, Loader2, MessageSquare } from 'lucide-react'
+import { ArrowLeft, Send, Loader2, MessageSquare, AlertTriangle, Search, X, Edit2, Trash2, Check, Settings, ShieldOff, Shield } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { io as socketIO, Socket } from 'socket.io-client'
+import { getSocket } from '../services/socket.service'
+import { useRealtimeStore } from '../store/realtimeStore'
+
+// ── Draft persistence helpers (MED-3) ─────────────────────────────────────────
+const DRAFT_PREFIX = 'uris_chat_draft_'
+const getDraft  = (chatId: string) => localStorage.getItem(`${DRAFT_PREFIX}${chatId}`) ?? ''
+const saveDraft = (chatId: string, text: string) => {
+  if (text) localStorage.setItem(`${DRAFT_PREFIX}${chatId}`, text)
+  else      localStorage.removeItem(`${DRAFT_PREFIX}${chatId}`)
+}
 
 interface Message {
   id: string
@@ -14,20 +23,13 @@ interface Message {
   senderId: string
   content: string
   createdAt: string
-  sender: {
-    id: string
-    name: string
-    email: string
-    role: string
-  }
+  editedAt?: string | null
+  isDeleted?: boolean
+  sender: { id: string; name: string; email: string; role: string }
 }
 
-interface Pagination {
-  total: number
-  page: number
-  limit: number
-  pages: number
-}
+interface Pagination { total: number; page: number; limit: number; pages: number }
+type ReadMap = Record<string, string | null>
 
 export default function ChatViewPage() {
   const { chatId } = useParams<{ chatId: string }>()
@@ -35,37 +37,68 @@ export default function ChatViewPage() {
   const user  = useAuthStore(selectUser)
   const nav   = useNavigate()
 
-  const [messages, setMessages]   = useState<Message[]>([])
-  const [pagination, setPagination] = useState<Pagination | null>(null)
-  const [loading, setLoading]     = useState(true)
+  const [messages, setMessages]       = useState<Message[]>([])
+  const [pagination, setPagination]   = useState<Pagination | null>(null)
+  const [readMap, setReadMap]         = useState<ReadMap>({})
+  const [loading, setLoading]         = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [sending, setSending]     = useState(false)
-  const [content, setContent]     = useState('')
-  const [error, setError]         = useState('')
-  const [chatName, setChatName]   = useState('')
-  // FIX 15: typing indicators
-  const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map())
+  const [sending, setSending]         = useState(false)
+  const [content, setContent]         = useState(() => (chatId ? getDraft(chatId) : ''))
+  const [error, setError]             = useState('')
+  const [chatName, setChatName]       = useState('')
+  const [chatType, setChatType]       = useState<'PRIVATE' | 'GROUP' | null>(null)
+  const [otherUserId, setOtherUserId]         = useState<string | null>(null)
+  const [otherUserOnline, setOtherUserOnline] = useState(false)
+  const [isBlocked, setIsBlocked]     = useState(false)
+  const [blockLoading, setBlockLoading] = useState(false)
+  const [typingUsers, setTypingUsers] = useState<Record<string, string>>({})
 
-  const bottomRef   = useRef<HTMLDivElement>(null)
-  const socketRef   = useRef<Socket | null>(null)
-  const inputRef    = useRef<HTMLTextAreaElement>(null)
-  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Search state
+  const [showSearch, setShowSearch]       = useState(false)
+  const [searchQuery, setSearchQuery]     = useState('')
+  const [searchResults, setSearchResults] = useState<Message[] | null>(null)
+  const [searchLoading, setSearchLoading] = useState(false)
+
+  // Edit state
+  const [editingId, setEditingId]     = useState<string | null>(null)
+  const [editContent, setEditContent] = useState('')
+  const [editLoading, setEditLoading] = useState(false)
+
+  const bottomRef        = useRef<HTMLDivElement>(null)
+  const inputRef         = useRef<HTMLTextAreaElement>(null)
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const mountedRef       = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
+  // MED-2 pagination refs
+  const loadedPageRef   = useRef(1)
+  const hasMorePagesRef = useRef(false)
+  const [hasMorePages, setHasMorePages] = useState(false)
+
+  const socketStatus = useRealtimeStore(s => s.status)
+  const isSessionExpired = socketStatus === 'auth_expired'
 
   // ── Load messages ──────────────────────────────────────────────────────────
   const loadMessages = useCallback(async (page = 1, append = false) => {
     if (!chatId) return
+    const LIMIT = 50
     try {
       if (page === 1) setLoading(true); else setLoadingMore(true)
       const res = await api.get<{
         success: boolean
-        data: { messages: Message[]; pagination: Pagination }
-      }>(`/chat/chats/${chatId}/messages?page=${page}&limit=50`)
-
-      const { messages: msgs, pagination: pg } = res.data.data
-      // Messages come back newest-first — reverse for display
+        data: { messages: Message[]; pagination: Pagination; participantReadMap: ReadMap }
+      }>(`/chat/chats/${chatId}/messages?page=${page}&limit=${LIMIT}`)
+      const { messages: msgs, pagination: pg, participantReadMap } = res.data.data
       const ordered = [...msgs].reverse()
       setMessages(prev => append ? [...ordered, ...prev] : ordered)
       setPagination(pg)
+      if (participantReadMap) setReadMap(participantReadMap)
+      loadedPageRef.current   = page
+      hasMorePagesRef.current = msgs.length === LIMIT
+      setHasMorePages(msgs.length === LIMIT)
     } catch {
       setError('Failed to load messages')
     } finally {
@@ -74,148 +107,237 @@ export default function ChatViewPage() {
     }
   }, [chatId])
 
-  // ── Load chat name from chats list ─────────────────────────────────────────
+  // ── Load chat name + type ─────────────────────────────────────────────────
   useEffect(() => {
     if (!chatId) return
-    api.get<{ success: boolean; data: { id: string; type: string; name?: string }[] }>('/chat/chats')
+    api.get<{ success: boolean; data: { chats?: Array<{
+      id: string; type: string; name?: string
+      otherParticipant?: { id: string; name: string; email: string } | null
+    }>; onlineUserIds?: string[] } | Array<{
+      id: string; type: string; name?: string
+      otherParticipant?: { id: string; name: string; email: string } | null
+    }> }>('/chat/chats')
       .then(res => {
-        const chat = (res.data.data ?? []).find(c => c.id === chatId)
-        setChatName(chat?.name ?? (chat?.type === 'PRIVATE' ? 'Private Chat' : 'Group Chat'))
+        const raw = res.data.data
+        const chats  = Array.isArray(raw) ? raw : (raw?.chats ?? [])
+        const online = Array.isArray(raw) ? [] : (raw?.onlineUserIds ?? [])
+        const chat = chats.find(c => c.id === chatId)
+        if (!chat) { setChatName('Chat'); return }
+        setChatType(chat.type as 'PRIVATE' | 'GROUP')
+        if (chat.type === 'PRIVATE') {
+          setChatName(chat.otherParticipant?.name ?? chat.otherParticipant?.email ?? 'Private Chat')
+          setOtherUserId(chat.otherParticipant?.id ?? null)
+          setOtherUserOnline(online.includes(chat.otherParticipant?.id ?? ''))
+        } else {
+          setChatName(chat.name ?? 'Group Chat')
+        }
       })
       .catch(() => setChatName('Chat'))
   }, [chatId])
 
-  // ── Socket connection ──────────────────────────────────────────────────────
+  // ── Socket effect ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!token || !chatId) return
+    if (!chatId) return
+    const socket = getSocket()
+    if (!socket) return
 
-    const backendUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'
-    const socket = socketIO(backendUrl, {
-      auth: { token },
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 2000,
-    })
-    socketRef.current = socket
+    socket.emit('chat:join', { chatId })
 
-    const registerListeners = () => {
+    // HIGH-1: re-join and re-fetch on reconnect
+    const handleReconnect = () => {
       socket.emit('chat:join', { chatId })
+      void loadMessages(1, false)
+    }
 
-      socket.on('newMessage', (data: { message: Message; chatId: string }) => {
-        if (data.chatId !== chatId) return
-        setMessages(prev => [...prev, data.message])
+    const handleNewMessage = (data: { message: Message; chatId: string }) => {
+      if (data.chatId !== chatId) return
+      setMessages(prev => {
+        if (prev.some(m => m.id === data.message.id)) return prev
         setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
-      })
-
-      // FIX 15: typing indicator listeners
-      socket.on('chat:typing', (data: { userId: string; userName: string; chatId: string }) => {
-        if (data.chatId !== chatId) return
-        setTypingUsers(prev => new Map(prev).set(data.userId, data.userName))
-      })
-
-      socket.on('chat:typing_stop', (data: { userId: string; chatId: string }) => {
-        if (data.chatId !== chatId) return
-        setTypingUsers(prev => {
-          const next = new Map(prev)
-          next.delete(data.userId)
-          return next
-        })
+        return [...prev, data.message]
       })
     }
 
-    socket.on('connect', () => {
-      // FIX 15: Re-register listeners and rejoin room after reconnect
-      registerListeners()
-    })
+    // CRIT-2: edit sync
+    const handleMessageEdited = (data: { message: Message; chatId: string }) => {
+      if (data.chatId !== chatId) return
+      setMessages(prev =>
+        prev.map(m => m.id === data.message.id
+          ? { ...m, content: data.message.content, editedAt: data.message.editedAt }
+          : m)
+      )
+    }
 
-    // Register immediately if already connected
-    if (socket.connected) registerListeners()
+    // CRIT-2: delete sync
+    const handleMessageDeleted = (data: { messageId: string; chatId: string }) => {
+      if (data.chatId !== chatId) return
+      setMessages(prev => prev.map(m => m.id === data.messageId ? { ...m, isDeleted: true } : m))
+    }
+
+    // FEAT-S1: read receipt sync
+    const handleChatRead = (data: { chatId: string; userId: string; lastReadAt: string }) => {
+      if (data.chatId !== chatId) return
+      setReadMap(prev => ({ ...prev, [data.userId]: data.lastReadAt }))
+    }
+
+    const handleUserTyping = (data: { chatId: string; userId: string; userName: string }) => {
+      if (data.chatId !== chatId || data.userId === user?.id) return
+      setTypingUsers(prev => ({ ...prev, [data.userId]: data.userName || 'Someone' }))
+    }
+
+    const handleUserStopTyping = (data: { chatId: string; userId: string }) => {
+      if (data.chatId !== chatId) return
+      setTypingUsers(prev => { const n = { ...prev }; delete n[data.userId]; return n })
+    }
+
+    const handleRenamed = (data: { chatId: string; name: string }) => {
+      if (data.chatId !== chatId) return
+      setChatName(data.name)
+    }
+
+    const handleParticipantRemoved = (data: { chatId: string; userId: string }) => {
+      if (data.chatId !== chatId) return
+      if (data.userId === user?.id) nav('/chat')
+    }
+
+    socket.on('connect',               handleReconnect)
+    socket.on('newMessage',            handleNewMessage)
+    socket.on('messageEdited',         handleMessageEdited)
+    socket.on('messageDeleted',        handleMessageDeleted)
+    socket.on('chat:read',             handleChatRead)
+    socket.on('chat:user_typing',      handleUserTyping)
+    socket.on('chat:user_stop_typing', handleUserStopTyping)
+    socket.on('chat:renamed',          handleRenamed)
+    socket.on('chat:participant_removed', handleParticipantRemoved)
 
     return () => {
-      if (typingTimer.current) clearTimeout(typingTimer.current)
+      socket.off('connect',               handleReconnect)
+      socket.off('newMessage',            handleNewMessage)
+      socket.off('messageEdited',         handleMessageEdited)
+      socket.off('messageDeleted',        handleMessageDeleted)
+      socket.off('chat:read',             handleChatRead)
+      socket.off('chat:user_typing',      handleUserTyping)
+      socket.off('chat:user_stop_typing', handleUserStopTyping)
+      socket.off('chat:renamed',          handleRenamed)
+      socket.off('chat:participant_removed', handleParticipantRemoved)
       socket.emit('chat:leave', { chatId })
-      socket.disconnect()
-      socketRef.current = null
-      setTypingUsers(new Map())
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
     }
-  }, [token, chatId])
+  }, [chatId, user?.id, loadMessages, nav])
 
-  // ── Initial load + scroll to bottom ───────────────────────────────────────
+  // ── Initial load ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!token) { nav('/login'); return }
     void loadMessages(1, false)
-  }, [token, nav, loadMessages])
+    if (chatId) api.patch(`/chat/chats/${chatId}/read`).catch(() => {})
+    api.get<{ success: boolean; data: { blockedId: string }[] }>('/chat/blocks')
+      .then(res => {
+        const blocked = new Set((res.data.data ?? []).map((b: { blockedId: string }) => b.blockedId))
+        if (otherUserId) setIsBlocked(blocked.has(otherUserId))
+      })
+      .catch(() => {})
+  }, [token, nav, loadMessages, chatId, otherUserId])
 
   useEffect(() => {
-    if (!loading) {
-      bottomRef.current?.scrollIntoView({ behavior: 'auto' })
-    }
+    if (!loading) bottomRef.current?.scrollIntoView({ behavior: 'auto' })
   }, [loading])
 
-  // ── Send message ──────────────────────────────────────────────────────────
+  // ── Send message ───────────────────────────────────────────────────────────
   const handleSend = async () => {
     const text = content.trim()
     if (!text || !chatId || sending) return
-
-    // Stop typing indicator before sending
-    if (typingTimer.current) clearTimeout(typingTimer.current)
-    socketRef.current?.emit('chat:typing_stop', { chatId })
-
     setSending(true)
     setContent('')
-    try {
+    if (chatId) saveDraft(chatId, '')
+    emitStopTyping()
+    const attemptSend = async (): Promise<Message> => {
       const res = await api.post<{ success: boolean; data: Message }>(
-        `/chat/chats/${chatId}/messages`,
-        { content: text }
+        `/chat/chats/${chatId}/messages`, { content: text }
       )
-      setMessages(prev => [...prev, res.data.data])
+      return res.data.data
+    }
+    try {
+      let message: Message
+      try {
+        message = await attemptSend()
+      } catch {
+        await new Promise(resolve => setTimeout(resolve, 800))
+        message = await attemptSend()
+      }
+      setMessages(prev => [...prev, message])
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
     } catch {
-      setError('Failed to send message')
+      setError('Failed to send message. Your text has been restored.')
       setContent(text)
+      if (chatId) saveDraft(chatId, text)
     } finally {
       setSending(false)
       inputRef.current?.focus()
     }
   }
 
-  // FIX 15: emit typing events with debounce
-  const handleTyping = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setContent(e.target.value)
-    if (!chatId || !socketRef.current) return
-    socketRef.current.emit('chat:typing', { chatId, userName: user?.name || 'Someone' })
-    if (typingTimer.current) clearTimeout(typingTimer.current)
-    typingTimer.current = setTimeout(() => {
-      socketRef.current?.emit('chat:typing_stop', { chatId })
-    }, 2000) // stop after 2s of inactivity
-  }
-
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      void handleSend()
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSend() }
   }
 
-  // ── Load older messages ───────────────────────────────────────────────────
+  // ── Typing indicators ──────────────────────────────────────────────────────
+  const emitTyping = () => {
+    const socket = getSocket()
+    if (!socket || !chatId) return
+    socket.emit('chat:typing', { chatId })
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+    typingTimeoutRef.current = setTimeout(() => {
+      if (!mountedRef.current) return
+      const s = getSocket()
+      if (s) s.emit('chat:stop_typing', { chatId })
+    }, 2000)
+  }
+
+  const emitStopTyping = () => {
+    const socket = getSocket()
+    if (!socket || !chatId) return
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+    socket.emit('chat:stop_typing', { chatId })
+  }
+
+  // ── Block / unblock ────────────────────────────────────────────────────────
+  const handleToggleBlock = async () => {
+    if (!otherUserId || blockLoading) return
+    setBlockLoading(true)
+    try {
+      if (isBlocked) {
+        await api.delete(`/chat/blocks/${otherUserId}`)
+        setIsBlocked(false)
+      } else {
+        await api.post(`/chat/blocks/${otherUserId}`)
+        setIsBlocked(true)
+      }
+    } catch { /* non-fatal */ } finally { setBlockLoading(false) }
+  }
+
+  // ── Load older messages ────────────────────────────────────────────────────
   const handleLoadMore = () => {
-    if (!pagination || pagination.page >= pagination.pages) return
-    void loadMessages(pagination.page + 1, true)
+    if (!hasMorePagesRef.current || loadingMore) return
+    void loadMessages(loadedPageRef.current + 1, true)
+  }
+
+  // ── FEAT-S1: read receipt helper ───────────────────────────────────────────
+  const getReadStatus = (msg: Message): 'seen' | 'sent' => {
+    const msgTime = new Date(msg.createdAt).getTime()
+    const others  = Object.entries(readMap).filter(([uid]) => uid !== user?.id)
+    if (others.length === 0) return 'sent'
+    return others.every(([, ts]) => ts !== null && new Date(ts).getTime() >= msgTime) ? 'seen' : 'sent'
   }
 
   const formatTime = (iso: string) => {
     const d = new Date(iso)
     const today = new Date()
-    const isToday =
-      d.getDate() === today.getDate() &&
-      d.getMonth() === today.getMonth() &&
-      d.getFullYear() === today.getFullYear()
+    const isToday = d.getDate() === today.getDate() &&
+      d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear()
     return isToday
       ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      : d.toLocaleDateString([], { day: '2-digit', month: 'short' }) +
-          ' ' +
-          d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : d.toLocaleDateString([], { day: '2-digit', month: 'short' }) + ' ' +
+        d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }
 
   return (
@@ -234,24 +356,65 @@ export default function ChatViewPage() {
               style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.12)' }}>
               <ArrowLeft size={14} />
             </button>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-sm flex items-center justify-center"
-                style={{ background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)' }}>
-                <MessageSquare size={13} className="text-gold" />
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="relative flex-shrink-0">
+                <div className="w-8 h-8 rounded-sm flex items-center justify-center"
+                  style={{ background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)' }}>
+                  <MessageSquare size={13} className="text-gold" />
+                </div>
+                {chatType === 'PRIVATE' && otherUserOnline && (
+                  <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-navy-950"
+                    style={{ background: '#4ade80' }} title="Online" />
+                )}
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="nav-label text-[0.55rem] text-gold/40 leading-none mb-0.5">CONVERSATION</p>
-                <p className="font-display font-bold text-sm text-frost/90">{chatName}</p>
+                <p className="font-display font-bold text-sm text-frost/90 truncate">{chatName}</p>
               </div>
             </div>
+
+            {/* Block button — PRIVATE chats only */}
+            {chatType === 'PRIVATE' && otherUserId && (
+              <button onClick={() => void handleToggleBlock()} disabled={blockLoading}
+                className="flex-shrink-0 p-2 rounded-sm transition-colors disabled:opacity-40"
+                style={isBlocked
+                  ? { background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', color: '#f87171' }
+                  : { background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.12)', color: 'rgba(184,212,240,0.4)' }}
+                title={isBlocked ? 'Unblock user' : 'Block user'}>
+                {isBlocked ? <ShieldOff size={14} /> : <Shield size={14} />}
+              </button>
+            )}
+
+            {/* Group manage button */}
+            {chatType === 'GROUP' && (
+              <button onClick={() => nav(`/chat/${chatId}/manage`)}
+                className="flex-shrink-0 p-2 rounded-sm text-ice/40 hover:text-gold transition-colors"
+                style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.12)' }}
+                title="Group settings">
+                <Settings size={14} />
+              </button>
+            )}
           </motion.div>
 
-          {/* Messages area */}
-          <div className="flex-1 overflow-y-auto space-y-3 pb-2 pr-1"
-            style={{ minHeight: 0 }}>
+          {/* Session expired banner */}
+          {isSessionExpired && (
+            <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+              className="flex items-center gap-3 mb-3 px-4 py-2.5 rounded-sm flex-shrink-0"
+              style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.25)' }}>
+              <AlertTriangle size={13} className="text-red-400 flex-shrink-0" />
+              <p className="font-body text-xs text-red-400/90 flex-1">Your session has expired. Real-time messaging is paused.</p>
+              <button onClick={() => { useAuthStore.getState().logout(); nav('/login') }}
+                className="nav-label text-[0.55rem] px-3 py-1 rounded-sm transition-all flex-shrink-0"
+                style={{ background: 'rgba(248,113,113,0.15)', border: '1px solid rgba(248,113,113,0.3)', color: '#f87171' }}>
+                RE-LOGIN
+              </button>
+            </motion.div>
+          )}
 
-            {/* Load more */}
-            {pagination && pagination.page < pagination.pages && (
+          {/* Messages area */}
+          <div className="flex-1 overflow-y-auto space-y-3 pb-2 pr-1" style={{ minHeight: 0 }}>
+
+            {hasMorePages && (
               <div className="text-center pt-2">
                 <button onClick={handleLoadMore} disabled={loadingMore}
                   className="nav-label text-[0.55rem] px-4 py-1.5 rounded-sm transition-all disabled:opacity-50"
@@ -276,38 +439,44 @@ export default function ChatViewPage() {
             ) : (
               <AnimatePresence initial={false}>
                 {messages.map((msg, i) => {
-                  const isMe = msg.senderId === user?.id
-                  const showName =
-                    !isMe &&
-                    (i === 0 || messages[i - 1]?.senderId !== msg.senderId)
-
+                  const isMe     = msg.senderId === user?.id
+                  const showName = !isMe && (i === 0 || messages[i - 1]?.senderId !== msg.senderId)
                   return (
                     <motion.div key={msg.id}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
+                      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.15 }}
                       className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                       {showName && (
-                        <p className="nav-label text-[0.5rem] text-ice/40 mb-1 ml-1">
-                          {msg.sender.name}
-                        </p>
+                        <p className="nav-label text-[0.5rem] text-ice/40 mb-1 ml-1">{msg.sender.name}</p>
                       )}
-                      <div className={`max-w-[75%] rounded-sm px-4 py-2.5 ${
-                        isMe
-                          ? 'rounded-br-none'
-                          : 'rounded-bl-none'
-                      }`}
+                      <div className={`max-w-[75%] rounded-sm px-4 py-2.5 ${isMe ? 'rounded-br-none' : 'rounded-bl-none'}`}
                         style={isMe
                           ? { background: 'rgba(201,168,76,0.15)', border: '1px solid rgba(201,168,76,0.25)' }
-                          : { background: 'rgba(13,15,28,0.8)', border: '1px solid rgba(184,212,240,0.08)' }
-                        }>
-                        <p className="font-body text-sm leading-snug"
-                          style={{ color: isMe ? '#e2c76e' : 'rgba(232,240,251,0.85)' }}>
-                          {msg.content}
-                        </p>
-                        <p className="nav-label text-[0.44rem] mt-1"
+                          : { background: 'rgba(13,15,28,0.8)', border: '1px solid rgba(184,212,240,0.08)' }}>
+                        {msg.isDeleted ? (
+                          <p className="font-body text-sm leading-snug italic"
+                            style={{ color: isMe ? 'rgba(201,168,76,0.35)' : 'rgba(184,212,240,0.3)' }}>
+                            Message deleted
+                          </p>
+                        ) : (
+                          <p className="font-body text-sm leading-snug"
+                            style={{ color: isMe ? '#e2c76e' : 'rgba(232,240,251,0.85)' }}>
+                            {msg.content}
+                          </p>
+                        )}
+                        <p className="nav-label text-[0.44rem] mt-1 flex items-center gap-1"
                           style={{ color: isMe ? 'rgba(201,168,76,0.5)' : 'rgba(184,212,240,0.25)' }}>
                           {formatTime(msg.createdAt)}
+                          {msg.editedAt && !msg.isDeleted && <span className="italic opacity-70">(edited)</span>}
+                          {isMe && !msg.isDeleted && (() => {
+                            const status = getReadStatus(msg)
+                            return (
+                              <span title={status === 'seen' ? 'Seen' : 'Sent'}
+                                style={{ color: status === 'seen' ? '#c9a84c' : 'rgba(201,168,76,0.35)', letterSpacing: '-0.05em' }}>
+                                {status === 'seen' ? '✓✓' : '✓'}
+                              </span>
+                            )
+                          })()}
                         </p>
                       </div>
                     </motion.div>
@@ -316,24 +485,36 @@ export default function ChatViewPage() {
               </AnimatePresence>
             )}
 
-            {/* Scroll anchor */}
             <div ref={bottomRef} />
           </div>
 
           {/* Input bar */}
           <div className="flex-shrink-0 pt-3 border-t border-gold/10">
-            {/* FIX 15: typing indicator */}
-            {typingUsers.size > 0 && (
-              <p className="nav-label text-[0.48rem] text-gold/50 mb-1.5 animate-pulse">
-                {[...typingUsers.values()].join(', ')} {typingUsers.size === 1 ? 'is' : 'are'} typing...
-              </p>
+            {Object.keys(typingUsers).length > 0 && (
+              <div className="flex items-center gap-1.5 mb-1.5 px-1">
+                <span className="flex gap-0.5 items-end">
+                  {[0, 1, 2].map(i => (
+                    <span key={i} className="w-1 h-1 rounded-full bg-ice/30"
+                      style={{ animation: `bounce 1.2s ${i * 0.2}s infinite` }} />
+                  ))}
+                </span>
+                <p className="nav-label text-[0.5rem] text-ice/35 italic">
+                  {Object.values(typingUsers).join(', ')}
+                  {Object.keys(typingUsers).length === 1 ? ' is typing…' : ' are typing…'}
+                </p>
+              </div>
             )}
             <div className="flex items-end gap-2">
               <textarea
                 ref={inputRef}
                 value={content}
-                onChange={handleTyping}
+                onChange={e => {
+                  setContent(e.target.value)
+                  emitTyping()
+                  if (chatId) saveDraft(chatId, e.target.value)
+                }}
                 onKeyDown={handleKeyDown}
+                onBlur={emitStopTyping}
                 placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
                 rows={1}
                 className="uris-input flex-1 resize-none"
@@ -351,9 +532,7 @@ export default function ChatViewPage() {
                 whileTap={content.trim() && !sending ? { scale: 0.95 } : {}}
                 className="flex-shrink-0 w-11 h-11 rounded-sm flex items-center justify-center disabled:opacity-40 transition-all"
                 style={{ background: 'rgba(201,168,76,0.2)', border: '1px solid rgba(201,168,76,0.35)' }}>
-                {sending
-                  ? <Loader2 size={15} className="text-gold animate-spin" />
-                  : <Send size={15} className="text-gold" />}
+                {sending ? <Loader2 size={15} className="text-gold animate-spin" /> : <Send size={15} className="text-gold" />}
               </motion.button>
             </div>
             <p className="nav-label text-[0.45rem] text-ice/20 mt-1.5 text-right">

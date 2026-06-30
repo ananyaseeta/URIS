@@ -41,6 +41,8 @@ function assertValidPermission(permission) {
 
 /**
  * Express middleware factory — enforces a named permission.
+ * Checks the live DB-backed permission overrides so changes in the
+ * Governance Access Matrix take effect immediately without a server restart.
  *
  * @param {string} permission - A key from PERMISSIONS
  * @returns {import('express').RequestHandler}
@@ -49,10 +51,18 @@ function requirePermission(permission) {
   // Validate at module load time — fail fast on typos
   assertValidPermission(permission);
 
-  return (req, res, next) => {
-    const role = req.user?.role;
+  return async (req, res, next) => {
+    // Use effectiveRole (set by delegation) if available, else use JWT role
+    const role = req.user?.effectiveRole || req.user?.role;
 
-    if (!role || !roleHasPermission(role, permission)) {
+    // Load live overrides from configStore (DB-backed, in-process cache)
+    let overrides = {};
+    try {
+      const configStore = require('../services/configStore');
+      overrides = (await configStore.get('permission_overrides', {})) || {};
+    } catch { /* non-fatal — fall back to static defaults */ }
+
+    if (!role || !roleHasPermission(role, permission, overrides)) {
       // Fire-and-forget audit log — same pattern as requireRole
       if (req.user) {
         const { logAction } = require('../utils/auditLogger');

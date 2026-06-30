@@ -241,6 +241,7 @@ module.exports = {
   getIntegrationIntelligence,
   getUnifiedIntelligence,
   getOpenProjectIntelligence,
+  getPresenceAnalytics,
 };
 
 /**
@@ -289,6 +290,21 @@ async function getOpenProjectIntelligence(req, res, next) {
     const { computeOPIntelligenceSignals } = require('../services/openproject.intelligence');
     const data = await computeOPIntelligenceSignals();
     return ok(res, data, 'OpenProject intelligence fetched.');
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /analytics/presence
+ * Presence intelligence: daily attendance, session duration, consistency rates.
+ */
+async function getPresenceAnalytics(req, res, next) {
+  try {
+    const { getPresenceIntelligence } = require('../services/presenceService');
+    const days = req.query.days ? parseInt(req.query.days, 10) : 14;
+    const data = await getPresenceIntelligence(days);
+    return ok(res, data, 'Presence intelligence fetched.');
   } catch (err) {
     next(err);
   }

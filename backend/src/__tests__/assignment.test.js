@@ -24,6 +24,8 @@ let adminUserId;
 let internUserId;
 let internId;
 let taskId;
+let placeholderUserId;
+let placeholderInternId;
 
 beforeAll(async () => {
   const hash = await bcrypt.hash('Password123', 10);
@@ -42,6 +44,15 @@ beforeAll(async () => {
   const intern = await prisma.intern.create({ data: { userId: internUserId } });
   internId = intern.id;
 
+  // Create placeholder intern to assign the task to initially
+  const placeholderUser = await prisma.user.create({
+    data: { email: `assign-placeholder-${RUN}@test.local`, password: hash, name: 'Placeholder User', role: 'TECHNICAL_INTERN', status: 'active' },
+  });
+  placeholderUserId = placeholderUser.id;
+
+  const placeholderIntern = await prisma.intern.create({ data: { userId: placeholderUserId } });
+  placeholderInternId = placeholderIntern.id;
+
   // Give the intern a capacity score above the threshold (default 40)
   await prisma.scoreHistory.create({
     data: { internId, score: 75, type: 'capacity' },
@@ -51,7 +62,7 @@ beforeAll(async () => {
   const task = await prisma.task.create({
     data: {
       planeTaskId:   `assign-task-${RUN}`,
-      internId,
+      internId:      placeholderInternId,
       title:         'Assignment test task',
       complexity:    2,
       status:        'active',
@@ -63,11 +74,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.alert.deleteMany({ where: { internId } });
-  await prisma.scoreHistory.deleteMany({ where: { internId } });
-  await prisma.task.deleteMany({ where: { internId } });
-  await prisma.intern.deleteMany({ where: { id: internId } });
-  await prisma.user.deleteMany({ where: { id: { in: [adminUserId, internUserId] } } });
+  await prisma.alert.deleteMany({ where: { internId: { in: [internId, placeholderInternId] } } });
+  await prisma.scoreHistory.deleteMany({ where: { internId: { in: [internId, placeholderInternId] } } });
+  await prisma.task.deleteMany({ where: { internId: { in: [internId, placeholderInternId] } } });
+  await prisma.intern.deleteMany({ where: { id: { in: [internId, placeholderInternId] } } });
+  await prisma.user.deleteMany({ where: { id: { in: [adminUserId, internUserId, placeholderUserId] } } });
   await prisma.$disconnect();
 });
 
@@ -138,7 +149,7 @@ describe('POST /assign/assign-task', () => {
     const anotherTask = await prisma.task.create({
       data: {
         planeTaskId:   `no-score-task-${RUN}`,
-        internId:      noScoreIntern.id,
+        internId:      placeholderInternId,
         title:         'No score task',
         complexity:    1,
         status:        'active',

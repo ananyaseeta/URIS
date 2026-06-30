@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown, ChevronUp, AlertOctagon, Clock, Flag, Plus, X, Loader2, AlertTriangle, CheckCircle2, Pause, Play, ShieldAlert, Star, Trash2 } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
@@ -39,6 +40,11 @@ function formatHoursRemaining(ms: number): string {
 
 
 export default function Tasks() {
+  const [searchParams] = useSearchParams()
+  // FIX 1: read ?internId= from URL — Dashboard "View Tasks" shortcut pre-sets this.
+  // When present, the task list is automatically filtered to that intern's tasks.
+  const internIdParam = searchParams.get('internId')
+
   const [tasks, setTasks]     = useState<Task[]>([])
   const [interns, setInterns] = useState<InternRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -197,11 +203,14 @@ export default function Tasks() {
     }
   }
 
-  const filtered = tasks.filter(t =>
-    filter === 'all'     ? true :
-    filter === 'stale'   ? t.isStale :
-    !!(t.blocker ?? t.hasBlocker)
-  )
+  // FIX 1: apply intern filter from URL param first, then status filter
+  const filtered = tasks
+    .filter(t => !internIdParam || t.internId === internIdParam)
+    .filter(t =>
+      filter === 'all'     ? true :
+      filter === 'stale'   ? t.isStale :
+      !!(t.blocker ?? t.hasBlocker)
+    )
 
   return (
     <div className="min-h-screen bg-navy-950 text-frost">

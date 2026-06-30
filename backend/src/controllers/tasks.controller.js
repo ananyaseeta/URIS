@@ -358,9 +358,47 @@ async function internUpdateTask(req, res, next) {
 async function deleteTask(req, res, next) {
   try {
     const { taskId } = req.params;
+    const { ROLES } = require('../constants/roles');
 
     const task = await prisma.task.findUnique({ where: { id: taskId } });
     if (!task) return notFound(res, 'Task not found');
+
+    // CORE_ADMIN and OPERATIONS_LEAD can delete any task.
+    // All other leads may only delete tasks belonging to interns on their team.
+    const canDeleteAll = new Set([
+      ROLES.CORE_ADMIN,
+      ROLES.OPERATIONS_LEAD,
+      ROLES.OPERATIONS_PROGRAM_MANAGER,
+    ]);
+
+    if (!canDeleteAll.has(req.user.role)) {
+      // Resolve the requesting lead's team intern IDs (same logic as getTaskFilter)
+      const leadTeams = await prisma.userTeam.findMany({
+        where: { userId: req.user.id, leftAt: null },
+        select: { teamId: true },
+      });
+      const teamIds = leadTeams.map(t => t.teamId);
+
+      let isAuthorised = false;
+      if (teamIds.length > 0) {
+        const teamMembers = await prisma.userTeam.findMany({
+          where: { teamId: { in: teamIds }, leftAt: null },
+          select: { userId: true },
+        });
+        const memberUserIds = teamMembers.map(m => m.userId);
+
+        const teamInterns = await prisma.intern.findMany({
+          where: { userId: { in: memberUserIds } },
+          select: { id: true },
+        });
+        const teamInternIds = new Set(teamInterns.map(i => i.id));
+        isAuthorised = teamInternIds.has(task.internId);
+      }
+
+      if (!isAuthorised) {
+        return forbidden(res, 'You can only delete tasks assigned to interns on your team');
+      }
+    }
 
     await removeTask(taskId);
 

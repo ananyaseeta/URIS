@@ -201,6 +201,19 @@ async function detectAndMarkStaleTasks() {
     });
 
     if (!existing) {
+      // Resolve intern name for a human-readable message that works for both
+      // the intern's own feed and the admin operational feed.
+      let internLabel = 'An intern';
+      try {
+        const internUser = await prisma.intern.findUnique({
+          where:  { id: task.internId },
+          select: { user: { select: { name: true, email: true } } },
+        });
+        internLabel = internUser?.user?.name
+          || internUser?.user?.email?.split('@')[0]
+          || 'An intern';
+      } catch { /* non-fatal — fall back to generic label */ }
+
       await prisma.alert.create({
         data: {
           internId: task.internId,
@@ -208,8 +221,8 @@ async function detectAndMarkStaleTasks() {
           taskId:   task.id,
           severity,
           message: isEscalationWindow
-            ? `ESCALATION: Task "${task.title}" is stale and due within ${Math.max(0, Math.round(hoursUntilDeadline))}h. Please update progress immediately.`
-            : `Task "${task.title}" has not been updated for ${Math.round(hoursSinceUpdate)}h and the deadline is approaching. Please update your progress.`,
+            ? `ESCALATION: ${internLabel}'s task "${task.title}" is stale and due within ${Math.max(0, Math.round(hoursUntilDeadline))}h.`
+            : `${internLabel}'s task "${task.title}" has not been updated for ${Math.round(hoursSinceUpdate)}h and the deadline is approaching.`,
         }
       });
     }

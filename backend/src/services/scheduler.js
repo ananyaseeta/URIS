@@ -71,6 +71,7 @@ let _integrationIntelligenceTask = null;
 let _opSyncTask = null;
 let _opIntelligenceTask = null;
 let _dbKeepAliveTask  = null;  // prevents Neon free-tier from suspending
+let _presenceCleanupTask = null; // auto-closes stale open check-in sessions
 
 
 // note: reassignment intelligence is implemented as a recommendation-only job
@@ -194,6 +195,7 @@ function start() {
   _startOPSyncJob();
   _startOPIntelligenceJob();
   _startDbKeepAliveJob();
+  _startPresenceCleanupJob();
 }
 
 function _startIntegrationIntelligenceJob() {
@@ -247,6 +249,7 @@ function stop() {
   if (_opSyncTask)        { _opSyncTask.stop();        _opSyncTask        = null; }
   if (_opIntelligenceTask){ _opIntelligenceTask.stop(); _opIntelligenceTask = null; }
   if (_dbKeepAliveTask)  { _dbKeepAliveTask.stop();  _dbKeepAliveTask  = null; }
+  if (_presenceCleanupTask) { _presenceCleanupTask.stop(); _presenceCleanupTask = null; }
   logger.info('All scheduled jobs stopped');
 }
 
@@ -561,6 +564,42 @@ function _startDbKeepAliveJob() {
   });
 
   logger.info('DB keep-alive job started (every 4 min — prevents Neon suspension)');
+}
+
+// ── Presence cleanup job ──────────────────────────────────────────────────────
+// Runs every 5 minutes. Auto-closes any VirtualPresence sessions that have
+// been open for more than 12 hours (guards against forgotten check-outs).
+
+function _startPresenceCleanupJob() {
+  if (process.env.NODE_ENV === 'test') return;
+
+  _presenceCleanupTask = cron.schedule('*/5 * * * *', async () => {
+    try {
+      const prisma = require('../utils/prisma');
+      const cutoff = new Date(Date.now() - 12 * 60 * 60 * 1000);
+
+      const stale = await prisma.virtualPresence.findMany({
+        where:  { checkOutAt: null, checkInAt: { lt: cutoff } },
+        select: { id: true, checkInAt: true },
+      });
+
+      for (const s of stale) {
+        const checkOutAt = new Date(new Date(s.checkInAt).getTime() + 12 * 60 * 60 * 1000);
+        await prisma.virtualPresence.update({
+          where: { id: s.id },
+          data:  { checkOutAt, durationMinutes: 720 }, // cap at 12 h
+        });
+      }
+
+      if (stale.length > 0) {
+        logger.info({ count: stale.length }, 'Stale presence sessions auto-closed');
+      }
+    } catch (err) {
+      logger.warn({ err: err.message }, 'Presence cleanup job failed (non-fatal)');
+    }
+  });
+
+  logger.info('Presence cleanup job started (every 5 min)');
 }
 
 module.exports = { start, stop };

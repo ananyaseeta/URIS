@@ -36,6 +36,9 @@ export default function Review() {
   const [completedTasks, setCompletedTasks] = useState<Task[]>([])
   const [tasksLoading, setTasksLoading]     = useState(true)
   const [tasksError, setTasksError]         = useState('')
+  // Track whether any completed tasks exist at all (reviewed or not) so the
+  // empty state can distinguish "nothing finished yet" from "all reviewed ✓"
+  const [totalCompletedCount, setTotalCompletedCount] = useState(0)
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [ratings, setRatings]           = useState<Ratings>(EMPTY_RATINGS)
@@ -60,8 +63,10 @@ export default function Review() {
         )
 
         // Only show completed tasks that have NOT been reviewed yet
+        const allCompleted = all.filter(t => t.status === 'completed' && !!t.internId)
+        setTotalCompletedCount(allCompleted.length)
         setCompletedTasks(
-          all.filter(t => t.status === 'completed' && !!t.internId && !reviewedTaskIds.has(t.id))
+          allCompleted.filter(t => !reviewedTaskIds.has(t.id))
         )
       } catch (err) {
         setTasksError(extractErrorMessage(err, 'Failed to load completed tasks.'))
@@ -193,7 +198,27 @@ export default function Review() {
                   )}
 
                   {!tasksLoading && !tasksError && completedTasks.length === 0 && (
-                    <p className="font-body text-sm text-ice/30 py-3">No completed assigned tasks found.</p>
+                    totalCompletedCount === 0 ? (
+                      /* No completed tasks at all yet */
+                      <div className="py-4">
+                        <p className="font-body text-sm text-ice/40 mb-1">No completed tasks to review yet.</p>
+                        <p className="font-body text-xs text-ice/25">
+                          Reviews become available once an intern's task is marked completed. Check back after the next task cycle.
+                        </p>
+                      </div>
+                    ) : (
+                      /* Completed tasks exist but all have been reviewed */
+                      <div className="flex items-start gap-3 py-3 px-3 rounded-sm"
+                        style={{ background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.15)' }}>
+                        <Check size={14} className="text-signal mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="font-body text-sm text-signal/80">All caught up — every completed task has a review.</p>
+                          <p className="font-body text-xs text-ice/30 mt-0.5">
+                            New tasks will appear here once they're marked complete.
+                          </p>
+                        </div>
+                      </div>
+                    )
                   )}
 
                   {!tasksLoading && !tasksError && completedTasks.length > 0 && (

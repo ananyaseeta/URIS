@@ -175,6 +175,51 @@ async function validateReviewSubmission({ taskId, internId, qualityScore, timeli
     };
   }
 
+  // 6. Team scope check — leads may only review interns on their own teams.
+  //    CORE_ADMIN and OPERATIONS_LEAD/OPERATIONS_PROGRAM_MANAGER have global scope.
+  //    All other reviewer roles must have the task's intern in one of their teams.
+  if (user) {
+    const GLOBAL_REVIEW_ROLES = new Set([
+      ROLES.CORE_ADMIN,
+      ROLES.OPERATIONS_LEAD,
+      ROLES.OPERATIONS_PROGRAM_MANAGER,
+    ]);
+
+    if (!GLOBAL_REVIEW_ROLES.has(user.role)) {
+      // Resolve the reviewer's teams
+      const reviewerTeams = await prisma.userTeam.findMany({
+        where: { userId: user.id, leftAt: null },
+        select: { teamId: true },
+      });
+      const reviewerTeamIds = reviewerTeams.map(t => t.teamId);
+
+      let isInScope = false;
+      if (reviewerTeamIds.length > 0) {
+        // Get all interns in those teams
+        const teamMembers = await prisma.userTeam.findMany({
+          where: { teamId: { in: reviewerTeamIds }, leftAt: null },
+          select: { userId: true },
+        });
+        const memberUserIds = teamMembers.map(m => m.userId);
+
+        const teamInterns = await prisma.intern.findMany({
+          where: { userId: { in: memberUserIds } },
+          select: { id: true },
+        });
+        const teamInternIds = new Set(teamInterns.map(i => i.id));
+        isInScope = teamInternIds.has(task.internId);
+      }
+
+      if (!isInScope) {
+        return {
+          ok:      false,
+          status:  403,
+          message: 'You can only review tasks assigned to interns on your team',
+        };
+      }
+    }
+  }
+
   return { ok: true };
 }
 
@@ -294,6 +339,60 @@ function validateAvailabilitySubmission({ maxFreeBlockHours, weekStart, weekEnd,
 // ── Assignment ─────────────────────────────────────────────────────────────────
 
 /**
+ * Maps a user's role to the permission required to assign tasks TO them.
+ * Uses the governance-configurable assignment target permissions.
+ */
+const TARGET_ROLE_PERMISSION_MAP = {
+  CORE_ADMIN:                 'CAN_ASSIGN_TO_CORE_ADMIN',
+  TECHNICAL_LEAD:             'CAN_ASSIGN_TO_ADMIN',
+  OPERATIONS_LEAD:            'CAN_ASSIGN_TO_ADMIN',
+  RESEARCH_LEAD:              'CAN_ASSIGN_TO_ADMIN',
+  OPERATIONS_PROGRAM_MANAGER: 'CAN_ASSIGN_TO_ADMIN',
+  OBSERVER_TEAM_LEAD:         'CAN_ASSIGN_TO_LEAD',
+  COLLABORATOR_LEAD:          'CAN_ASSIGN_TO_LEAD',
+  TECHNICAL_INTERN:           'CAN_ASSIGN_TO_INTERN',
+  OPERATIONS_INTERN:          'CAN_ASSIGN_TO_INTERN',
+  RESEARCH_INTERN:            'CAN_ASSIGN_TO_INTERN',
+  ORENDA_MEMBER:              'CAN_ASSIGN_TO_INTERN',
+};
+
+/**
+ * Check whether the assigning user's role has permission to assign tasks
+ * to the intern's associated user role.
+ *
+ * Uses live DB-backed permission overrides so Governance Access Matrix
+ * changes take effect immediately.
+ *
+ * @param {string} assignerRole - Role of the person doing the assignment
+ * @param {string} targetUserRole - Role of the user being assigned to
+ * @returns {Promise<{ allowed: boolean; permission: string | null }>}
+ */
+async function canAssignToTargetRole(assignerRole, targetUserRole, assignerUserId) {
+  const { roleHasPermissionAsync } = require('../constants/permissions');
+
+  // If assignerUserId is provided, check if they are a CORE_ADMIN delegate
+  // Delegates get full CORE_ADMIN assignment capabilities
+  if (assignerUserId && assignerRole !== 'CORE_ADMIN') {
+    try {
+      const { isDelegate } = require('./delegationService');
+      const delegated = await isDelegate(assignerUserId);
+      if (delegated) {
+        // Treat as CORE_ADMIN — can assign to anyone except CORE_ADMIN itself
+        // (CORE_ADMIN target is still restricted for delegates by design)
+        const effectiveRole = 'CORE_ADMIN';
+        const permission = TARGET_ROLE_PERMISSION_MAP[targetUserRole] || 'CAN_ASSIGN_TO_INTERN';
+        const allowed = await roleHasPermissionAsync(effectiveRole, permission);
+        return { allowed, permission };
+      }
+    } catch { /* non-fatal */ }
+  }
+
+  const permission = TARGET_ROLE_PERMISSION_MAP[targetUserRole] || 'CAN_ASSIGN_TO_INTERN';
+  const allowed = await roleHasPermissionAsync(assignerRole, permission);
+  return { allowed, permission };
+}
+
+/**
  * Validates business rules for task assignment.
  *
  * Checks:
@@ -306,13 +405,31 @@ async function validateTaskAssignment({ internId, taskId, user }) {
   const { ROLES } = require('../constants/roles');
   
   // 1. Intern must exist
-  const intern = await prisma.intern.findUnique({ where: { id: internId } });
+  const intern = await prisma.intern.findUnique({
+    where: { id: internId },
+    include: { user: { select: { role: true } } },
+  });
   if (!intern) {
     return {
       ok:      false,
       status:  404,
       message: `Intern with id "${internId}" does not exist`,
     };
+  }
+
+  // 1b. Check assignment target permission (governance-configurable)
+  if (user) {
+    const targetUserRole = intern.user?.role;
+    if (targetUserRole) {
+      const { allowed, permission } = await canAssignToTargetRole(user.role, targetUserRole, user.id);
+      if (!allowed) {
+        return {
+          ok:      false,
+          status:  403,
+          message: `You do not have permission to assign tasks to this role. (Required: ${permission})`,
+        };
+      }
+    }
   }
 
   // 2. Task must exist
@@ -362,4 +479,5 @@ module.exports = {
   validateReviewSubmission,
   validateAvailabilitySubmission,
   validateTaskAssignment,
+  canAssignToTargetRole,
 };

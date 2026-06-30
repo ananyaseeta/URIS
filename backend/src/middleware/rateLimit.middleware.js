@@ -81,4 +81,56 @@ const forgotPasswordLimiter = rateLimit({
   handler:         rateLimitHandler,
 });
 
-module.exports = { loginLimiter, registerLimiter, apiLimiter, forgotPasswordLimiter };
+// ── Chat message limiter ──────────────────────────────────────────────────────
+// Per-user (keyed by JWT user id) limit on sending messages.
+// Prevents a single user from flooding a chat.
+//
+//   RATE_LIMIT_CHAT_WINDOW_MS  — sliding window in ms  (default: 10 s)
+//   RATE_LIMIT_CHAT_MAX        — max messages per window (default: 10)
+//
+// 10 messages per 10 seconds is generous for normal conversation but
+// stops programmatic flooding at HTTP throughput.
+//
+// NOTE: This declaration MUST remain above module.exports so the exported
+// value is the actual middleware function, not undefined (CRIT-1 fix).
+const chatMessageLimiter = rateLimit({
+  windowMs:        parseInt(process.env.RATE_LIMIT_CHAT_WINDOW_MS) || 10 * 1000,
+  max:             parseInt(process.env.RATE_LIMIT_CHAT_MAX)        || 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders:   false,
+  // Key by authenticated user id, not IP — so VPNs / shared IPs don't affect others
+  keyGenerator: (req) => req.user?.id || req.ip,
+  handler: (req, res) => res.status(429).json({
+    success: false,
+    error:   'RATE_LIMITED',
+    message: 'Sending too fast. Please slow down.',
+    data:    null,
+  }),
+});
+
+// ── Friend request limiter (LOW-6) ───────────────────────────────────────────
+// Per-user (keyed by JWT user id) limit on sending friend requests.
+// Without this, a scripted client can enumerate all user IDs and send requests
+// to every user in the directory, spamming their /chat/requests page.
+//
+// 10 requests per hour is generous for real use — nobody legitimately sends
+// 10 friend requests in an hour — but stops any scripted enumeration cold.
+//
+//   RATE_LIMIT_FRIEND_REQ_WINDOW_MS  — sliding window in ms  (default: 1 hr)
+//   RATE_LIMIT_FRIEND_REQ_MAX        — max requests per window (default: 10)
+const friendRequestLimiter = rateLimit({
+  windowMs:        parseInt(process.env.RATE_LIMIT_FRIEND_REQ_WINDOW_MS) || 60 * 60 * 1000,
+  max:             parseInt(process.env.RATE_LIMIT_FRIEND_REQ_MAX)        || 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders:   false,
+  // Key by authenticated user id so shared IPs (office, VPN) don't affect others
+  keyGenerator: (req) => req.user?.id || req.ip,
+  handler: (req, res) => res.status(429).json({
+    success: false,
+    error:   'RATE_LIMITED',
+    message: 'Too many friend requests. Please wait before sending more.',
+    data:    null,
+  }),
+});
+
+module.exports = { loginLimiter, registerLimiter, apiLimiter, forgotPasswordLimiter, chatMessageLimiter, friendRequestLimiter };

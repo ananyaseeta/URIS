@@ -18,6 +18,7 @@ import {
   onSocketEvent,
   SOCKET_EVENTS,
   type SocketEventPayload,
+  type SocketEventName,
   type OperationalPulsePayload,
   type EnterpriseHealthPayload,
 } from '../services/socket.service'
@@ -54,7 +55,7 @@ export interface LiveFeedEvent {
   affectedEntities: Array<{ internId?: string; name?: string }>
 }
 
-type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
+type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'auth_expired'
 
 interface RealtimeState {
   status:           ConnectionStatus
@@ -106,7 +107,15 @@ export const useRealtimeStore = create<RealtimeState>((set, get) => ({
 
     socket.on('connect',       () => set({ status: 'connected' }))
     socket.on('disconnect',    () => set({ status: 'disconnected' }))
-    socket.on('connect_error', () => set({ status: 'error' }))
+    socket.on('connect_error', (err) => {
+      // AUTH_INVALID / AUTH_REQUIRED means the JWT was rejected (expired or revoked).
+      // Set a distinct status so the UI can show a session-expired banner (SEC-7).
+      if (err.message === 'AUTH_INVALID' || err.message === 'AUTH_REQUIRED' || err.message === 'USER_NOT_FOUND') {
+        set({ status: 'auth_expired' })
+      } else {
+        set({ status: 'error' })
+      }
+    })
 
     // Clean up any previous subscriptions
     _unsubs.forEach(fn => fn())
@@ -148,6 +157,10 @@ export const useRealtimeStore = create<RealtimeState>((set, get) => ({
       ),
       onSocketEvent<SocketEventPayload>(
         SOCKET_EVENTS.RESERVATION_UPDATE,
+        (data) => get()._pushFeedEvent(data)
+      ),
+      onSocketEvent<SocketEventPayload>(
+        'intelligence:presence_update' as SocketEventName,
         (data) => get()._pushFeedEvent(data)
       ),
     )

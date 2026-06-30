@@ -42,6 +42,12 @@ async function getReassignmentRecommendations() {
         select: { score: true },
       },
       credibility: { select: { score: true } },
+      // Include reviews within the RPI window so performanceScore is real.
+      // Source: Review table — quality/timeliness/initiative ratings submitted by admins.
+      reviews: {
+        where: { createdAt: { gte: getRpiWindowStart() } },
+        select: { quality: true, timeliness: true, initiative: true },
+      },
     },
   });
 
@@ -121,12 +127,26 @@ async function getReassignmentRecommendations() {
     const loadBand = determineLoadBand(effectiveTli);
     const unresolvedAlertCount = alertsByIntern[intern.id] || 0;
 
+    // performanceScore: derived from real Review records within the RPI window.
+    // Formula: avg(quality + timeliness + initiative) / 3 scaled from 1–5 to 0–100.
+    // Returns null when no reviews exist — never injects a fabricated score.
+    const performanceScore = intern.reviews && intern.reviews.length > 0
+      ? parseFloat(
+          (
+            intern.reviews.reduce((s, r) => s + (r.quality + r.timeliness + r.initiative) / 3, 0)
+            / intern.reviews.length
+            * 20  // convert 0–5 → 0–100
+          ).toFixed(1)
+        )
+      : null;
+
     return {
       internId: intern.id,
       name: intern.user?.name || intern.user?.email?.split('@')[0] || intern.id,
       availabilityScore: capacityScore, // already 0..100
       credibilityScore: credScore, // 0..100
-      performanceScore: 50, // no direct perf index from this query; keep neutral
+      // performanceScore: real RPI from Review table (null = no reviews yet)
+      performanceScore,
       effectiveTli,
       loadBand,
       status: intern.user?.status || 'active',

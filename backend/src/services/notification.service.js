@@ -61,6 +61,28 @@ async function notifyOperationalAlert(email, alertMessage) {
 }
 
 /**
+ * Notify a user that they received a new chat message while offline.
+ * Only called for participants who have no active Socket.IO connection —
+ * online users receive the message in real-time via the socket and don't
+ * need an email.
+ *
+ * @param {string} email          - Recipient email
+ * @param {string} recipientName  - Recipient display name
+ * @param {string} senderName     - Sender display name
+ * @param {string} chatName       - Conversation name (other person or group name)
+ * @param {string} preview        - Raw message content (truncated by template)
+ * @param {string} chatId         - Chat ID — used to build the direct link
+ */
+async function notifyNewChatMessage(email, recipientName, senderName, chatName, preview, chatId) {
+  const chatUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/chat/${chatId}`;
+  return sendEmail({
+    to: email,
+    templateName: 'new-chat-message',
+    templateData: { recipientName, senderName, chatName, preview, chatUrl },
+  });
+}
+
+/**
  * Send GDoc work-log reminders to all active interns.
  * Called by the GDoc reminder cron job.
  * Per-intern errors do NOT abort the remaining sends.
@@ -103,5 +125,6 @@ module.exports = {
   notifyTaskAssigned,
   notifyGdocReminder,
   notifyOperationalAlert,
+  notifyNewChatMessage,
   sendGdocReminders,
 };

@@ -102,12 +102,29 @@ export function connectSocket(token: string): Socket {
   })
 
   _socket.on('connect_error', (err) => {
-    // Non-fatal: REST API continues to work; realtime is enhancement only
+    // If the server rejects the token (expired or invalid), the error message
+    // will be AUTH_INVALID or AUTH_REQUIRED. In that case we trigger a logout
+    // so the user sees the login page instead of a silently dead connection.
+    if (err.message === 'AUTH_INVALID' || err.message === 'AUTH_REQUIRED' || err.message === 'USER_NOT_FOUND') {
+      console.warn('[URIS Socket] Token rejected — triggering logout:', err.message)
+      // Dynamic import avoids circular dependency with authStore
+      import('../store/authStore')
+        .then(({ useAuthStore }) => {
+          useAuthStore.getState().logout()
+        })
+        .catch(() => {})
+      return
+    }
+    // Non-fatal for other errors: REST API continues to work; realtime is enhancement only
     console.warn('[URIS Socket] Connection error:', err.message)
   })
 
   _socket.on('disconnect', (reason) => {
     console.debug('[URIS Socket] Disconnected:', reason)
+    // If the server forcefully disconnected due to auth failure, trigger logout
+    if (reason === 'io server disconnect') {
+      console.warn('[URIS Socket] Server-initiated disconnect — possible auth failure')
+    }
   })
 
   return _socket

@@ -33,13 +33,17 @@ const { AUDIT_ACTIONS, AUDIT_ENTITIES } = require('../constants/auditActions');
 async function buildSnapshot(user) {
   const teams = await prisma.userTeam.findMany({
     where:   { userId: user.id, leftAt: null },
-    include: { team: { select: { id: true, name: true } } },
-    select:  { teamId: true, role: true, joinedAt: true, team: true },
+    select:  {
+      teamId: true,
+      role: true,
+      joinedAt: true,
+      team: { select: { id: true, name: true } }
+    },
   });
 
   const intern = await prisma.intern.findUnique({
     where:  { userId: user.id },
-    select: { id: true, slug: true, skills: true, overrideScore: true },
+    select: { id: true, overrideScore: true },
   });
 
   return {

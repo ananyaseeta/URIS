@@ -1,0 +1,17 @@
+DO $$ BEGIN
+  CREATE TYPE "LoadBand" AS ENUM ('GREEN', 'AMBER', 'RED');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE "FriendRequestStatus" AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE "ChatType" AS ENUM ('PRIVATE', 'GROUP');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+-- Drop TEXT loadBand column if it exists, re-add as proper enum
+ALTER TABLE "User" DROP COLUMN IF EXISTS "loadBand";
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "tli" DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "effectiveTli" DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE "User" ADD COLUMN "loadBand" "LoadBand" NOT NULL DEFAULT 'GREEN';
